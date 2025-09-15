@@ -1,7 +1,8 @@
 mod app;
 mod build;
 
-fn main() {
-    build::web::build();
-    println!("Server runs");
+#[tokio::main]
+async fn main() {
+    let _ = dotenvy::dotenv();
+    build::web::build().await;
 }
