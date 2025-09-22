@@ -1,10 +1,10 @@
 use axum::{
-    routing::{get, post, put, delete},
+    routing::get,
     Router, Json, extract::{State, Path},
     http::StatusCode,
 };
 use uuid::Uuid;
-use serde::{Deserialize, Serialize};
+use serde::{Serialize};
 use crate::app::services::user_service::UserService;
 use crate::app::repositories::user_repository::UserRepository;
 use crate::app::models::user::User;
@@ -24,19 +24,6 @@ impl AppState {
     }
 }
 
-#[derive(Deserialize)]
-struct CreateUserRequest {
-    name: String,
-    email: String,
-    password: String,
-}
-
-#[derive(Deserialize)]
-struct UpdateUserRequest {
-    name: Option<String>,
-    email: Option<String>,
-    password: Option<String>,
-}
 
 #[derive(Serialize)]
 struct ErrorResponse {
@@ -45,22 +32,9 @@ struct ErrorResponse {
 
 pub fn routes() -> Router<AppState> {
     Router::new()
-        .route("/", get(list_users).post(create_user))
-        .route("/{id}", get(get_user).put(update_user).delete(delete_user))
+        .route("/", get(list_users))
         .route("/email/{email}", get(get_user_by_email))
-}
-
-async fn create_user(
-    State(state): State<AppState>,
-    Json(req): Json<CreateUserRequest>,
-) -> Result<Json<User>, (StatusCode, Json<ErrorResponse>)> {
-    match state.user_service.create_user(req.name, req.email, req.password).await {
-        Ok(user) => Ok(Json(user)),
-        Err(e) => Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: e.to_string() }),
-        )),
-    }
+        .route("/{id}", get(get_user))
 }
 
 async fn list_users(
@@ -109,38 +83,4 @@ async fn get_user_by_email(
     }
 }
 
-async fn update_user(
-    State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-    Json(req): Json<UpdateUserRequest>,
-) -> Result<Json<User>, (StatusCode, Json<ErrorResponse>)> {
-    match state.user_service.update_user(id, req.name, req.email, req.password).await {
-        Ok(Some(user)) => Ok(Json(user)),
-        Ok(None) => Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse { error: "User not found".to_string() }),
-        )),
-        Err(e) => Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: e.to_string() }),
-        )),
-    }
-}
-
-async fn delete_user(
-    State(state): State<AppState>,
-    Path(id): Path<Uuid>,
-) -> Result<StatusCode, (StatusCode, Json<ErrorResponse>)> {
-    match state.user_service.delete_user(id).await {
-        Ok(true) => Ok(StatusCode::NO_CONTENT),
-        Ok(false) => Err((
-            StatusCode::NOT_FOUND,
-            Json(ErrorResponse { error: "User not found".to_string() }),
-        )),
-        Err(e) => Err((
-            StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: e.to_string() }),
-        )),
-    }
-}
 

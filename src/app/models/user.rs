@@ -7,7 +7,7 @@ use std::hash::{Hash, Hasher};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
     pub id: Uuid,
-    pub name: String,
+    pub name: Option<String>,
     pub email: String,
     pub password: String,
     pub created_at: Option<time::OffsetDateTime>,
@@ -23,7 +23,7 @@ impl User {
 
         Self {
             id: Uuid::new_v4(),
-            name,
+            name: Some(name),
             email,
             password: hashed_password,
             created_at: Some(time::OffsetDateTime::now_utc()),

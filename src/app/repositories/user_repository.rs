@@ -1,6 +1,6 @@
 use sqlx::{PgPool, Result as SqlxResult};
 use uuid::Uuid;
-use time;
+use time::OffsetDateTime;
 use crate::app::models::user::User;
 
 pub struct UserRepository {
@@ -16,9 +16,9 @@ impl UserRepository {
         let user = sqlx::query_as!(
             User,
             r#"
-            INSERT INTO users (id, username, email, password_hash, created_at, updated_at)
+            INSERT INTO users (id, first_name, email, password_hash, created_at, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, username as name, email, password_hash as password, created_at, updated_at
+            RETURNING id, first_name as name, email, password_hash as password, created_at, updated_at
             "#,
             user.id,
             user.name,
@@ -37,7 +37,7 @@ impl UserRepository {
         let user = sqlx::query_as!(
             User,
             r#"
-            SELECT id, username as name, email, password_hash as password, created_at, updated_at
+            SELECT id, first_name as name, email, password_hash as password, created_at, updated_at
             FROM users
             WHERE id = $1
             "#,
@@ -53,7 +53,7 @@ impl UserRepository {
         let user = sqlx::query_as!(
             User,
             r#"
-            SELECT id, username as name, email, password_hash as password, created_at, updated_at
+            SELECT id, first_name as name, email, password_hash as password, created_at, updated_at
             FROM users
             WHERE email = $1
             "#,
@@ -69,7 +69,7 @@ impl UserRepository {
         let users = sqlx::query_as!(
             User,
             r#"
-            SELECT id, username as name, email, password_hash as password, created_at, updated_at
+            SELECT id, first_name as name, email, password_hash as password, created_at, updated_at
             FROM users
             ORDER BY created_at DESC
             "#
@@ -86,18 +86,18 @@ impl UserRepository {
             r#"
             UPDATE users
             SET
-                username = COALESCE($2, username),
+                first_name = COALESCE($2, first_name),
                 email = COALESCE($3, email),
                 password_hash = COALESCE($4, password_hash),
                 updated_at = $5
             WHERE id = $1
-            RETURNING id, username as name, email, password_hash as password, created_at, updated_at
+            RETURNING id, first_name as name, email, password_hash as password, created_at, updated_at
             "#,
             id,
             name,
             email,
             password,
-            time::OffsetDateTime::now_utc()
+            OffsetDateTime::now_utc()
         )
         .fetch_optional(&self.pool)
         .await?;
