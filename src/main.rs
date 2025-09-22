@@ -5,6 +5,6 @@ mod routes;
 #[tokio::main]
 async fn main() {
     let _ = dotenvy::dotenv();
-    build::postgres::build().await;
-    build::web::build().await;
+    let pool = build::postgres::build().await.expect("Failed to connect to Database");
+    build::web::build(pool).await;
 }
