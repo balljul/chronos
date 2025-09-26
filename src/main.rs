@@ -1,7 +1,10 @@
 mod app;
 mod build;
+mod routes;
 
-fn main() {
-    build::web::build();
-    println!("Server runs");
+#[tokio::main]
+async fn main() {
+    let _ = dotenvy::dotenv();
+    let pool = build::postgres::build().await.expect("Failed to connect to Database");
+    build::web::build(pool).await;
 }
