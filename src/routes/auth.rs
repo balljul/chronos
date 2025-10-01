@@ -1,8 +1,10 @@
 use axum::{
     routing::post,
     Router, Json, extract::State,
-    http::StatusCode,
+    http::{StatusCode, HeaderMap},
+    extract::ConnectInfo,
 };
+use std::net::SocketAddr;
 use std::sync::Arc;
 use tower_governor::{
     governor::GovernorConfigBuilder,
@@ -10,6 +12,7 @@ use tower_governor::{
 };
 use crate::app::services::auth_service::AuthService;
 use crate::app::services::jwt_service::JwtService;
+use crate::app::services::secure_login_service::SecureLoginService;
 use crate::app::models::auth::{RegisterRequest, RegisterResponse, AuthError, ForgotPasswordRequest, ForgotPasswordResponse, ResetPasswordRequest, ResetPasswordResponse};
 use crate::app::models::jwt::{LoginRequest, LoginResponse, RefreshTokenRequest, RefreshTokenResponse, LogoutRequest, LogoutResponse, JwtError};
 
@@ -17,23 +20,27 @@ use crate::app::models::jwt::{LoginRequest, LoginResponse, RefreshTokenRequest, 
 pub struct AuthAppState {
     pub auth_service: Arc<AuthService>,
     pub jwt_service: Arc<JwtService>,
+    pub secure_login_service: Arc<SecureLoginService>,
 }
 
 impl AuthAppState {
-    pub fn new(auth_service: AuthService, jwt_service: JwtService) -> Self {
+    pub fn new(auth_service: AuthService, jwt_service: JwtService, secure_login_service: SecureLoginService) -> Self {
         Self {
             auth_service: Arc::new(auth_service),
             jwt_service: Arc::new(jwt_service),
+            secure_login_service: Arc::new(secure_login_service),
         }
     }
 }
 
 pub fn routes() -> Router<AuthAppState> {
-    // Configure rate limiting: 10 requests per minute per IP for auth endpoints
+    // Configure rate limiting: general auth endpoints limited to prevent DoS
+    // Note: Login has specific rate limiting (5 failed attempts per 15 minutes)
+    // implemented in SecureLoginService, this is additional protection
     let governor_conf = Box::new(
         GovernorConfigBuilder::default()
-            .per_second(10)
-            .burst_size(10)
+            .per_second(5)  // 5 requests per second max
+            .burst_size(10) // Allow bursts of 10
             .finish()
             .unwrap(),
     );
@@ -112,45 +119,35 @@ async fn reset_password(
 
 async fn login(
     State(state): State<AuthAppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(request): Json<LoginRequest>,
 ) -> Result<(StatusCode, Json<LoginResponse>), (StatusCode, Json<AuthError>)> {
-    // Find user by email
-    let user = match state.auth_service.find_user_by_email(&request.email).await {
-        Ok(Some(user)) => user,
-        Ok(None) => {
-            return Err((StatusCode::UNAUTHORIZED, Json(AuthError::new("Invalid email or password"))));
-        }
-        Err(_) => {
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(AuthError::new("Database error"))));
-        }
-    };
+    // Extract IP address
+    let ip_address = addr.ip().to_string();
 
-    // Verify password
-    match user.verify_password(&request.password) {
-        Ok(true) => {},
-        Ok(false) => {
-            return Err((StatusCode::UNAUTHORIZED, Json(AuthError::new("Invalid email or password"))));
-        }
-        Err(_) => {
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(AuthError::new("Password verification error"))));
+    // Extract User-Agent
+    let user_agent = headers
+        .get("user-agent")
+        .and_then(|header| header.to_str().ok())
+        .map(|s| s.to_string());
+
+    // Use secure login service with enhanced security features
+    match state.secure_login_service.secure_login(request, ip_address, user_agent).await {
+        Ok(response) => Ok((StatusCode::OK, Json(response))),
+        Err(error) => {
+            let status_code = match error.error.as_str() {
+                "Too many failed login attempts. Please try again later." => StatusCode::TOO_MANY_REQUESTS,
+                msg if msg.contains("Account is temporarily locked") => StatusCode::LOCKED,
+                msg if msg.contains("Account has been temporarily locked") => StatusCode::LOCKED,
+                "Invalid email or password" => StatusCode::UNAUTHORIZED,
+                "Authentication failed" => StatusCode::UNAUTHORIZED,
+                _ if error.error.contains("Database error") => StatusCode::INTERNAL_SERVER_ERROR,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            Err((status_code, Json(error)))
         }
     }
-
-    // Generate JWT tokens
-    let token_pair = match state.jwt_service.generate_token_pair(&user).await {
-        Ok(tokens) => tokens,
-        Err(_) => {
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, Json(AuthError::new("Token generation failed"))));
-        }
-    };
-
-    let response = LoginResponse {
-        message: "Login successful".to_string(),
-        user: user.to_response(),
-        tokens: token_pair,
-    };
-
-    Ok((StatusCode::OK, Json(response)))
 }
 
 async fn refresh_token(
@@ -209,8 +206,12 @@ async fn logout(
         return Err((StatusCode::INTERNAL_SERVER_ERROR, error.to_string()));
     }
 
-    // If refresh token is provided, blacklist it too
+    // If refresh token is provided, revoke it properly
     if let Some(refresh_token) = request.refresh_token {
+        if let Err(error) = state.jwt_service.revoke_refresh_token(&refresh_token).await {
+            return Err((StatusCode::INTERNAL_SERVER_ERROR, error.to_string()));
+        }
+        // Also blacklist the refresh token
         if let Err(error) = state.jwt_service.blacklist_token(&refresh_token).await {
             return Err((StatusCode::INTERNAL_SERVER_ERROR, error.to_string()));
         }
