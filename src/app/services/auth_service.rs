@@ -22,6 +22,10 @@ impl AuthService {
         }
     }
 
+    pub async fn find_user_by_email(&self, email: &str) -> Result<Option<User>, sqlx::Error> {
+        self.user_repository.find_by_email(email).await
+    }
+
     pub async fn register(&self, request: RegisterRequest) -> Result<RegisterResponse, AuthError> {
         // Validate request
         if let Err(validation_errors) = request.validate() {
