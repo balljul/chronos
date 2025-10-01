@@ -1,7 +1,7 @@
+use crate::app::models::login_attempt::{AccountLockout, LoginAttempt, RefreshTokenStorage};
 use sqlx::{PgPool, Result as SqlxResult};
-use uuid::Uuid;
 use time::OffsetDateTime;
-use crate::app::models::login_attempt::{LoginAttempt, AccountLockout, RefreshTokenStorage};
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct LoginAttemptRepository {
@@ -36,7 +36,11 @@ impl LoginAttemptRepository {
     }
 
     // Count failed attempts for an IP address within a time window
-    pub async fn count_failed_attempts_by_ip(&self, ip_address: &str, since: OffsetDateTime) -> SqlxResult<i64> {
+    pub async fn count_failed_attempts_by_ip(
+        &self,
+        ip_address: &str,
+        since: OffsetDateTime,
+    ) -> SqlxResult<i64> {
         let count = sqlx::query_scalar!(
             r#"
             SELECT COUNT(*) as count
@@ -53,7 +57,11 @@ impl LoginAttemptRepository {
     }
 
     // Count failed attempts for a user (by email) within a time window
-    pub async fn count_failed_attempts_by_email(&self, email: &str, since: OffsetDateTime) -> SqlxResult<i64> {
+    pub async fn count_failed_attempts_by_email(
+        &self,
+        email: &str,
+        since: OffsetDateTime,
+    ) -> SqlxResult<i64> {
         let count = sqlx::query_scalar!(
             r#"
             SELECT COUNT(*) as count
@@ -70,7 +78,11 @@ impl LoginAttemptRepository {
     }
 
     // Get recent login attempts for analysis
-    pub async fn get_recent_attempts_by_email(&self, email: &str, limit: i32) -> SqlxResult<Vec<LoginAttempt>> {
+    pub async fn get_recent_attempts_by_email(
+        &self,
+        email: &str,
+        limit: i32,
+    ) -> SqlxResult<Vec<LoginAttempt>> {
         let attempts = sqlx::query_as!(
             LoginAttempt,
             r#"
@@ -294,11 +306,9 @@ impl RefreshTokenRepository {
 
     // Clean up expired tokens
     pub async fn cleanup_expired_tokens(&self) -> SqlxResult<u64> {
-        let result = sqlx::query!(
-            "DELETE FROM refresh_tokens WHERE expires_at < NOW()"
-        )
-        .execute(&self.pool)
-        .await?;
+        let result = sqlx::query!("DELETE FROM refresh_tokens WHERE expires_at < NOW()")
+            .execute(&self.pool)
+            .await?;
 
         Ok(result.rows_affected())
     }

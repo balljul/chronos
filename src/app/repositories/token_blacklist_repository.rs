@@ -1,7 +1,7 @@
-use sqlx::{PgPool, Row};
-use uuid::Uuid;
-use time::OffsetDateTime;
 use crate::app::models::jwt::{BlacklistedToken, TokenType};
+use sqlx::{PgPool, Row};
+use time::OffsetDateTime;
+use uuid::Uuid;
 
 type SqlxResult<T> = Result<T, sqlx::Error>;
 
@@ -56,26 +56,27 @@ impl TokenBlacklistRepository {
 
     // Check if a token is blacklisted
     pub async fn is_blacklisted(&self, jti: &str) -> SqlxResult<bool> {
-        let row = sqlx::query(
-            "SELECT COUNT(*) as count FROM blacklisted_tokens WHERE jti = $1"
-        )
-        .bind(jti)
-        .fetch_one(&self.pool)
-        .await?;
+        let row = sqlx::query("SELECT COUNT(*) as count FROM blacklisted_tokens WHERE jti = $1")
+            .bind(jti)
+            .fetch_one(&self.pool)
+            .await?;
 
         let count: i64 = row.get("count");
         Ok(count > 0)
     }
 
     // Get all blacklisted tokens for a user (admin functionality)
-    pub async fn get_blacklisted_tokens_by_user(&self, user_id: Uuid) -> SqlxResult<Vec<BlacklistedToken>> {
+    pub async fn get_blacklisted_tokens_by_user(
+        &self,
+        user_id: Uuid,
+    ) -> SqlxResult<Vec<BlacklistedToken>> {
         let rows = sqlx::query(
             r#"
             SELECT id, jti, user_id, token_type, expires_at, blacklisted_at
             FROM blacklisted_tokens
             WHERE user_id = $1
             ORDER BY blacklisted_at DESC
-            "#
+            "#,
         )
         .bind(user_id)
         .fetch_all(&self.pool)
@@ -104,12 +105,10 @@ impl TokenBlacklistRepository {
 
     // Clean up expired blacklisted tokens (maintenance task)
     pub async fn cleanup_expired_tokens(&self, current_time: OffsetDateTime) -> SqlxResult<usize> {
-        let result = sqlx::query(
-            "DELETE FROM blacklisted_tokens WHERE expires_at < $1"
-        )
-        .bind(current_time)
-        .execute(&self.pool)
-        .await?;
+        let result = sqlx::query("DELETE FROM blacklisted_tokens WHERE expires_at < $1")
+            .bind(current_time)
+            .execute(&self.pool)
+            .await?;
 
         Ok(result.rows_affected() as usize)
     }
@@ -151,7 +150,7 @@ impl TokenBlacklistRepository {
             SELECT id, jti, user_id, token_type, expires_at, blacklisted_at
             FROM blacklisted_tokens
             WHERE jti = $1
-            "#
+            "#,
         )
         .bind(jti)
         .fetch_optional(&self.pool)
