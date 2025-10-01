@@ -1,26 +1,25 @@
 use axum::{
     body::Body,
-    http::{Request, StatusCode},
     extract::connect_info::MockConnectInfo,
+    http::{Request, StatusCode},
 };
-use serde_json::{json, Value};
-use tower::ServiceExt;
-use tower::ServiceBuilder;
-use tower_http::{
-    trace::TraceLayer,
-    request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
-};
-use chronos::routes;
 use chronos::app::middleware::security::{SecurityHeadersLayer, get_cors_layer};
+use chronos::routes;
+use dotenvy::dotenv;
+use serde_json::{Value, json};
 use sqlx::PgPool;
 use std::env;
 use std::net::SocketAddr;
-use dotenvy::dotenv;
+use tower::ServiceBuilder;
+use tower::ServiceExt;
+use tower_http::{
+    request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
+    trace::TraceLayer,
+};
 
 async fn setup_test_pool() -> PgPool {
     dotenv().ok();
-    let database_url = env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set for tests");
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set for tests");
 
     sqlx::PgPool::connect(&database_url)
         .await
@@ -40,8 +39,8 @@ async fn create_test_app() -> axum::Router {
             .layer(SecurityHeadersLayer)
             .layer(get_cors_layer())
             .layer(MockConnectInfo(
-                "192.168.1.1:8080".parse::<SocketAddr>().unwrap()
-            ))
+                "192.168.1.1:8080".parse::<SocketAddr>().unwrap(),
+            )),
     )
 }
 
@@ -64,15 +63,20 @@ async fn test_registration_rate_limiting_integration() {
                     "email": format!("user{}@example.com", i),
                     "password": "StrongP@ssw0rd123",
                     "name": "Test User"
-                }).to_string()
+                })
+                .to_string(),
             ))
             .unwrap();
 
         let response = app.clone().oneshot(request).await.unwrap();
 
         // Should not be rate limited (status should be 201 for success or 400/409 for validation/conflict)
-        assert_ne!(response.status(), StatusCode::TOO_MANY_REQUESTS,
-                  "Request {} should not be rate limited", i + 1);
+        assert_ne!(
+            response.status(),
+            StatusCode::TOO_MANY_REQUESTS,
+            "Request {} should not be rate limited",
+            i + 1
+        );
     }
 
     // 6th attempt should be rate limited
@@ -86,7 +90,8 @@ async fn test_registration_rate_limiting_integration() {
                 "email": "user6@example.com",
                 "password": "StrongP@ssw0rd123",
                 "name": "Test User"
-            }).to_string()
+            })
+            .to_string(),
         ))
         .unwrap();
 
@@ -109,7 +114,8 @@ async fn test_password_reset_rate_limiting_integration() {
             .body(Body::from(
                 json!({
                     "email": test_email
-                }).to_string()
+                })
+                .to_string(),
             ))
             .unwrap();
 
@@ -127,7 +133,8 @@ async fn test_password_reset_rate_limiting_integration() {
         .body(Body::from(
             json!({
                 "email": test_email
-            }).to_string()
+            })
+            .to_string(),
         ))
         .unwrap();
 
@@ -148,7 +155,8 @@ async fn test_security_headers_applied() {
                 "email": "security@example.com",
                 "password": "StrongP@ssw0rd123",
                 "name": "Test User"
-            }).to_string()
+            })
+            .to_string(),
         ))
         .unwrap();
 
@@ -167,19 +175,40 @@ async fn test_security_headers_applied() {
     assert_eq!(headers.get("x-xss-protection").unwrap(), "1; mode=block");
 
     assert!(headers.contains_key("strict-transport-security"));
-    assert!(headers.get("strict-transport-security").unwrap()
-            .to_str().unwrap().contains("max-age=31536000"));
+    assert!(
+        headers
+            .get("strict-transport-security")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("max-age=31536000")
+    );
 
     assert!(headers.contains_key("content-security-policy"));
-    assert!(headers.get("content-security-policy").unwrap()
-            .to_str().unwrap().contains("default-src 'self'"));
+    assert!(
+        headers
+            .get("content-security-policy")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("default-src 'self'")
+    );
 
     assert!(headers.contains_key("referrer-policy"));
-    assert_eq!(headers.get("referrer-policy").unwrap(), "strict-origin-when-cross-origin");
+    assert_eq!(
+        headers.get("referrer-policy").unwrap(),
+        "strict-origin-when-cross-origin"
+    );
 
     assert!(headers.contains_key("permissions-policy"));
-    assert!(headers.get("permissions-policy").unwrap()
-            .to_str().unwrap().contains("geolocation=()"));
+    assert!(
+        headers
+            .get("permissions-policy")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("geolocation=()")
+    );
 }
 
 #[tokio::test]
@@ -234,7 +263,8 @@ async fn test_missing_content_type_handling() {
             json!({
                 "email": "test@example.com",
                 "password": "StrongP@ssw0rd123"
-            }).to_string()
+            })
+            .to_string(),
         ))
         .unwrap();
 
@@ -258,7 +288,8 @@ async fn test_user_agent_logging() {
                 "email": "useragent@example.com",
                 "password": "StrongP@ssw0rd123",
                 "name": "Test User"
-            }).to_string()
+            })
+            .to_string(),
         ))
         .unwrap();
 
@@ -282,7 +313,8 @@ async fn test_refresh_token_rotation_integration() {
                 "email": "refreshtest@example.com",
                 "password": "StrongP@ssw0rd123",
                 "name": "Test User"
-            }).to_string()
+            })
+            .to_string(),
         ))
         .unwrap();
 
@@ -298,14 +330,17 @@ async fn test_refresh_token_rotation_integration() {
                 json!({
                     "email": "refreshtest@example.com",
                     "password": "StrongP@ssw0rd123"
-                }).to_string()
+                })
+                .to_string(),
             ))
             .unwrap();
 
         let login_response = app.clone().oneshot(login_request).await.unwrap();
 
         if login_response.status() == StatusCode::OK {
-            let body_bytes = axum::body::to_bytes(login_response.into_body(), usize::MAX).await.unwrap();
+            let body_bytes = axum::body::to_bytes(login_response.into_body(), usize::MAX)
+                .await
+                .unwrap();
             let login_data: Value = serde_json::from_slice(&body_bytes).unwrap();
 
             let refresh_token = login_data["tokens"]["refresh_token"].as_str().unwrap();
@@ -318,14 +353,17 @@ async fn test_refresh_token_rotation_integration() {
                 .body(Body::from(
                     json!({
                         "refresh_token": refresh_token
-                    }).to_string()
+                    })
+                    .to_string(),
                 ))
                 .unwrap();
 
             let refresh_response = app.clone().oneshot(refresh_request).await.unwrap();
 
             if refresh_response.status() == StatusCode::OK {
-                let body_bytes = axum::body::to_bytes(refresh_response.into_body(), usize::MAX).await.unwrap();
+                let body_bytes = axum::body::to_bytes(refresh_response.into_body(), usize::MAX)
+                    .await
+                    .unwrap();
                 let refresh_data: Value = serde_json::from_slice(&body_bytes).unwrap();
 
                 // Verify response structure for token rotation
@@ -363,7 +401,8 @@ async fn test_rate_limiting_with_different_ips() {
                     "email": format!("user{}ip1@example.com", i),
                     "password": "StrongP@ssw0rd123",
                     "name": "Test User"
-                }).to_string()
+                })
+                .to_string(),
             ))
             .unwrap();
 
@@ -381,7 +420,8 @@ async fn test_rate_limiting_with_different_ips() {
                 "email": "user6ip1@example.com",
                 "password": "StrongP@ssw0rd123",
                 "name": "Test User"
-            }).to_string()
+            })
+            .to_string(),
         ))
         .unwrap();
 
@@ -399,7 +439,8 @@ async fn test_rate_limiting_with_different_ips() {
                 "email": "user1ip2@example.com",
                 "password": "StrongP@ssw0rd123",
                 "name": "Test User"
-            }).to_string()
+            })
+            .to_string(),
         ))
         .unwrap();
 
@@ -418,7 +459,8 @@ async fn test_malformed_refresh_token() {
         .body(Body::from(
             json!({
                 "refresh_token": "invalid.malformed.token"
-            }).to_string()
+            })
+            .to_string(),
         ))
         .unwrap();
 
@@ -439,7 +481,8 @@ async fn test_empty_refresh_token() {
         .body(Body::from(
             json!({
                 "refresh_token": ""
-            }).to_string()
+            })
+            .to_string(),
         ))
         .unwrap();
 

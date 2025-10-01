@@ -1,23 +1,26 @@
-use chronos::app::models::jwt::{LoginRequest, LoginResponse};
 use chronos::app::models::auth::AuthError;
+use chronos::app::models::jwt::{LoginRequest, LoginResponse};
+use chronos::app::models::login_attempt::{AccountLockout, LoginAttempt, RefreshTokenStorage};
 use chronos::app::models::user::User;
-use chronos::app::models::login_attempt::{LoginAttempt, AccountLockout, RefreshTokenStorage};
-use chronos::app::services::secure_login_service::SecureLoginService;
-use chronos::app::services::auth_service::AuthService;
-use chronos::app::services::jwt_service::JwtService;
-use chronos::app::repositories::user_repository::UserRepository;
+use chronos::app::repositories::login_attempt_repository::{
+    AccountLockoutRepository, LoginAttemptRepository, RefreshTokenRepository,
+};
 use chronos::app::repositories::password_reset_repository::PasswordResetRepository;
 use chronos::app::repositories::token_blacklist_repository::TokenBlacklistRepository;
-use chronos::app::repositories::login_attempt_repository::{LoginAttemptRepository, AccountLockoutRepository, RefreshTokenRepository};
+use chronos::app::repositories::user_repository::UserRepository;
+use chronos::app::services::auth_service::AuthService;
 use chronos::app::services::email_service::MockEmailService;
+use chronos::app::services::jwt_service::JwtService;
+use chronos::app::services::secure_login_service::SecureLoginService;
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::env;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
 async fn setup_test_pool() -> PgPool {
-    let database_url = env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgresql://postgres:password@localhost:5432/chronos_test".to_string());
+    let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| {
+        "postgresql://postgres:password@localhost:5432/chronos_test".to_string()
+    });
 
     PgPoolOptions::new()
         .max_connections(5)
@@ -36,7 +39,11 @@ async fn setup_secure_login_service(pool: PgPool) -> SecureLoginService {
     let email_service = MockEmailService::new();
 
     let auth_service = AuthService::new(user_repository, password_reset_repository, email_service);
-    let jwt_service = JwtService::new("test-secret-key", token_blacklist_repository, refresh_token_repository);
+    let jwt_service = JwtService::new(
+        "test-secret-key",
+        token_blacklist_repository,
+        refresh_token_repository,
+    );
 
     SecureLoginService::new(
         auth_service,
@@ -51,10 +58,14 @@ async fn create_test_user(pool: &PgPool) -> User {
         Some("Test User".to_string()),
         "test@example.com".to_string(),
         "SecurePassword123!",
-    ).expect("Failed to create test user");
+    )
+    .expect("Failed to create test user");
 
     let user_repository = UserRepository::new(pool.clone());
-    user_repository.create(&user).await.expect("Failed to save test user")
+    user_repository
+        .create(&user)
+        .await
+        .expect("Failed to save test user")
 }
 
 #[tokio::test]
@@ -68,11 +79,13 @@ async fn test_successful_login() {
         password: "SecurePassword123!".to_string(),
     };
 
-    let result = service.secure_login(
-        request,
-        "192.168.1.1".to_string(),
-        Some("Test User Agent".to_string()),
-    ).await;
+    let result = service
+        .secure_login(
+            request,
+            "192.168.1.1".to_string(),
+            Some("Test User Agent".to_string()),
+        )
+        .await;
 
     assert!(result.is_ok());
     let response = result.unwrap();
@@ -97,11 +110,13 @@ async fn test_invalid_credentials() {
         password: "WrongPassword".to_string(),
     };
 
-    let result = service.secure_login(
-        request,
-        "192.168.1.1".to_string(),
-        Some("Test User Agent".to_string()),
-    ).await;
+    let result = service
+        .secure_login(
+            request,
+            "192.168.1.1".to_string(),
+            Some("Test User Agent".to_string()),
+        )
+        .await;
 
     assert!(result.is_err());
     let error = result.unwrap_err();
@@ -122,11 +137,13 @@ async fn test_nonexistent_user() {
         password: "AnyPassword".to_string(),
     };
 
-    let result = service.secure_login(
-        request,
-        "192.168.1.1".to_string(),
-        Some("Test User Agent".to_string()),
-    ).await;
+    let result = service
+        .secure_login(
+            request,
+            "192.168.1.1".to_string(),
+            Some("Test User Agent".to_string()),
+        )
+        .await;
 
     assert!(result.is_err());
     let error = result.unwrap_err();
@@ -149,11 +166,9 @@ async fn test_ip_rate_limiting() {
             password: "WrongPassword".to_string(),
         };
 
-        let _ = service.secure_login(
-            request,
-            ip_address.clone(),
-            user_agent.clone(),
-        ).await;
+        let _ = service
+            .secure_login(request, ip_address.clone(), user_agent.clone())
+            .await;
     }
 
     // 6th attempt should be rate limited
@@ -162,15 +177,14 @@ async fn test_ip_rate_limiting() {
         password: "WrongPassword".to_string(),
     };
 
-    let result = service.secure_login(
-        request,
-        ip_address,
-        user_agent,
-    ).await;
+    let result = service.secure_login(request, ip_address, user_agent).await;
 
     assert!(result.is_err());
     let error = result.unwrap_err();
-    assert_eq!(error.error, "Too many failed login attempts. Please try again later.");
+    assert_eq!(
+        error.error,
+        "Too many failed login attempts. Please try again later."
+    );
 
     // Cleanup
     let user_repository = UserRepository::new(pool);
@@ -192,11 +206,13 @@ async fn test_account_lockout() {
             password: "WrongPassword".to_string(),
         };
 
-        let result = service.secure_login(
-            request,
-            format!("192.168.1.{}", i + 10), // Different IPs to avoid IP rate limiting
-            user_agent.clone(),
-        ).await;
+        let result = service
+            .secure_login(
+                request,
+                format!("192.168.1.{}", i + 10), // Different IPs to avoid IP rate limiting
+                user_agent.clone(),
+            )
+            .await;
 
         // Should fail but not be locked until the 10th attempt
         assert!(result.is_err());
@@ -208,11 +224,9 @@ async fn test_account_lockout() {
         password: "WrongPassword".to_string(),
     };
 
-    let result = service.secure_login(
-        request,
-        "192.168.1.100".to_string(),
-        user_agent,
-    ).await;
+    let result = service
+        .secure_login(request, "192.168.1.100".to_string(), user_agent)
+        .await;
 
     assert!(result.is_err());
     let error = result.unwrap_err();
@@ -232,18 +246,23 @@ async fn test_locked_account_rejects_valid_credentials() {
     // Create an account lockout
     let lockout = AccountLockout::new(user.id, 10, 30);
     let lockout_repository = AccountLockoutRepository::new(pool.clone());
-    lockout_repository.create_lockout(&lockout).await.expect("Failed to create lockout");
+    lockout_repository
+        .create_lockout(&lockout)
+        .await
+        .expect("Failed to create lockout");
 
     let request = LoginRequest {
         email: user.email.clone(),
         password: "SecurePassword123!".to_string(), // Correct password
     };
 
-    let result = service.secure_login(
-        request,
-        "192.168.1.1".to_string(),
-        Some("Test User Agent".to_string()),
-    ).await;
+    let result = service
+        .secure_login(
+            request,
+            "192.168.1.1".to_string(),
+            Some("Test User Agent".to_string()),
+        )
+        .await;
 
     assert!(result.is_err());
     let error = result.unwrap_err();
@@ -266,18 +285,23 @@ async fn test_successful_login_unlocks_account() {
     lockout.locked_until = past_time; // Already expired
 
     let lockout_repository = AccountLockoutRepository::new(pool.clone());
-    lockout_repository.create_lockout(&lockout).await.expect("Failed to create lockout");
+    lockout_repository
+        .create_lockout(&lockout)
+        .await
+        .expect("Failed to create lockout");
 
     let request = LoginRequest {
         email: user.email.clone(),
         password: "SecurePassword123!".to_string(),
     };
 
-    let result = service.secure_login(
-        request,
-        "192.168.1.1".to_string(),
-        Some("Test User Agent".to_string()),
-    ).await;
+    let result = service
+        .secure_login(
+            request,
+            "192.168.1.1".to_string(),
+            Some("Test User Agent".to_string()),
+        )
+        .await;
 
     // Should succeed because lockout has expired
     assert!(result.is_ok());
@@ -299,11 +323,13 @@ async fn test_login_statistics_tracking() {
         password: "SecurePassword123!".to_string(),
     };
 
-    let result = service.secure_login(
-        request,
-        "192.168.1.1".to_string(),
-        Some("Test User Agent".to_string()),
-    ).await;
+    let result = service
+        .secure_login(
+            request,
+            "192.168.1.1".to_string(),
+            Some("Test User Agent".to_string()),
+        )
+        .await;
     assert!(result.is_ok());
 
     // Make a failed login
@@ -312,11 +338,13 @@ async fn test_login_statistics_tracking() {
         password: "WrongPassword".to_string(),
     };
 
-    let _ = service.secure_login(
-        request,
-        "192.168.1.2".to_string(),
-        Some("Test User Agent".to_string()),
-    ).await;
+    let _ = service
+        .secure_login(
+            request,
+            "192.168.1.2".to_string(),
+            Some("Test User Agent".to_string()),
+        )
+        .await;
 
     // Check statistics
     let stats = service.get_login_statistics(&user.email).await;
@@ -345,7 +373,10 @@ async fn test_manual_account_unlock() {
     // Create an active lockout
     let lockout = AccountLockout::new(user.id, 10, 30);
     let lockout_repository = AccountLockoutRepository::new(pool.clone());
-    lockout_repository.create_lockout(&lockout).await.expect("Failed to create lockout");
+    lockout_repository
+        .create_lockout(&lockout)
+        .await
+        .expect("Failed to create lockout");
 
     // Unlock the account manually
     let unlock_result = service.unlock_account(user.id).await;
@@ -357,11 +388,13 @@ async fn test_manual_account_unlock() {
         password: "SecurePassword123!".to_string(),
     };
 
-    let result = service.secure_login(
-        request,
-        "192.168.1.1".to_string(),
-        Some("Test User Agent".to_string()),
-    ).await;
+    let result = service
+        .secure_login(
+            request,
+            "192.168.1.1".to_string(),
+            Some("Test User Agent".to_string()),
+        )
+        .await;
 
     assert!(result.is_ok());
 

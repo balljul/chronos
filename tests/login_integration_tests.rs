@@ -2,19 +2,20 @@ use axum::{
     body::Body,
     http::{self, Request, StatusCode},
 };
-use tower::ServiceExt;
-use serde_json::{json, Value};
 use chronos::app::models::user::User;
 use chronos::app::repositories::user_repository::UserRepository;
+use dotenvy::dotenv;
+use serde_json::{Value, json};
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::env;
+use tower::ServiceExt;
 use uuid::Uuid;
-use dotenvy::dotenv;
 
 async fn setup_test_pool() -> PgPool {
     dotenv().ok();
-    let database_url = env::var("DATABASE_URL")
-        .unwrap_or_else(|_| "postgresql://postgres:password@localhost:5432/chronos_test".to_string());
+    let database_url = env::var("DATABASE_URL").unwrap_or_else(|_| {
+        "postgresql://postgres:password@localhost:5432/chronos_test".to_string()
+    });
 
     PgPoolOptions::new()
         .max_connections(5)
@@ -28,10 +29,14 @@ async fn create_test_user(pool: &PgPool) -> User {
         Some("Integration Test User".to_string()),
         "integration@example.com".to_string(),
         "IntegrationTest123!",
-    ).expect("Failed to create test user");
+    )
+    .expect("Failed to create test user");
 
     let user_repository = UserRepository::new(pool.clone());
-    user_repository.create(&user).await.expect("Failed to save test user")
+    user_repository
+        .create(&user)
+        .await
+        .expect("Failed to save test user")
 }
 
 // Note: These tests would require the full application setup

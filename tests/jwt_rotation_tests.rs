@@ -1,19 +1,18 @@
-use chronos::app::models::jwt::{Claims, TokenType, RefreshTokenResponse};
+use chronos::app::models::jwt::{Claims, RefreshTokenResponse, TokenType};
 use chronos::app::models::user::User;
-use chronos::app::services::jwt_service::JwtService;
-use chronos::app::repositories::token_blacklist_repository::TokenBlacklistRepository;
 use chronos::app::repositories::login_attempt_repository::RefreshTokenRepository;
+use chronos::app::repositories::token_blacklist_repository::TokenBlacklistRepository;
 use chronos::app::repositories::user_repository::UserRepository;
-use sqlx::PgPool;
-use uuid::Uuid;
-use time::OffsetDateTime;
-use std::env;
+use chronos::app::services::jwt_service::JwtService;
 use dotenvy::dotenv;
+use sqlx::PgPool;
+use std::env;
+use time::OffsetDateTime;
+use uuid::Uuid;
 
 async fn setup_test_pool() -> PgPool {
     dotenv().ok();
-    let database_url = env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set for tests");
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set for tests");
 
     sqlx::PgPool::connect(&database_url)
         .await
@@ -25,10 +24,14 @@ async fn create_test_user(pool: &PgPool, email_suffix: &str) -> User {
         Some("Test User".to_string()),
         format!("test{}@example.com", email_suffix),
         "TestPassword123!",
-    ).expect("Failed to create test user");
+    )
+    .expect("Failed to create test user");
 
     let user_repository = UserRepository::new(pool.clone());
-    user_repository.create(&user).await.expect("Failed to save test user")
+    user_repository
+        .create(&user)
+        .await
+        .expect("Failed to save test user")
 }
 
 #[tokio::test]
@@ -37,10 +40,15 @@ async fn test_token_pair_generation() {
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
     let refresh_repo = RefreshTokenRepository::new(pool.clone());
 
-    let jwt_service = JwtService::new("test_secret_key_at_least_256_bits_long", blacklist_repo, refresh_repo);
+    let jwt_service = JwtService::new(
+        "test_secret_key_at_least_256_bits_long",
+        blacklist_repo,
+        refresh_repo,
+    );
     let test_user = create_test_user(&pool, "_pair_gen").await;
 
-    let token_pair = jwt_service.generate_token_pair(&test_user)
+    let token_pair = jwt_service
+        .generate_token_pair(&test_user)
         .await
         .expect("Should generate token pair successfully");
 
@@ -65,15 +73,21 @@ async fn test_access_token_validation() {
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
     let refresh_repo = RefreshTokenRepository::new(pool.clone());
 
-    let jwt_service = JwtService::new("test_secret_key_at_least_256_bits_long", blacklist_repo, refresh_repo);
+    let jwt_service = JwtService::new(
+        "test_secret_key_at_least_256_bits_long",
+        blacklist_repo,
+        refresh_repo,
+    );
     let test_user = create_test_user(&pool, "_access_val").await;
 
-    let token_pair = jwt_service.generate_token_pair(&test_user)
+    let token_pair = jwt_service
+        .generate_token_pair(&test_user)
         .await
         .expect("Should generate token pair successfully");
 
     // Validate access token
-    let access_claims = jwt_service.validate_token(&token_pair.access_token)
+    let access_claims = jwt_service
+        .validate_token(&token_pair.access_token)
         .await
         .expect("Access token should be valid");
 
@@ -82,7 +96,8 @@ async fn test_access_token_validation() {
     assert!(matches!(access_claims.token_type, TokenType::Access));
 
     // Validate refresh token
-    let refresh_claims = jwt_service.validate_token(&token_pair.refresh_token)
+    let refresh_claims = jwt_service
+        .validate_token(&token_pair.refresh_token)
         .await
         .expect("Refresh token should be valid");
 
@@ -97,16 +112,22 @@ async fn test_token_rotation() {
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
     let refresh_repo = RefreshTokenRepository::new(pool.clone());
 
-    let jwt_service = JwtService::new("test_secret_key_at_least_256_bits_long", blacklist_repo, refresh_repo);
+    let jwt_service = JwtService::new(
+        "test_secret_key_at_least_256_bits_long",
+        blacklist_repo,
+        refresh_repo,
+    );
     let test_user = create_test_user(&pool, "_rotation").await;
 
     // Generate initial token pair
-    let initial_tokens = jwt_service.generate_token_pair(&test_user)
+    let initial_tokens = jwt_service
+        .generate_token_pair(&test_user)
         .await
         .expect("Should generate initial token pair");
 
     // Use refresh token to get new tokens with rotation
-    let new_tokens = jwt_service.refresh_with_rotation(&initial_tokens.refresh_token, test_user.id)
+    let new_tokens = jwt_service
+        .refresh_with_rotation(&initial_tokens.refresh_token, test_user.id)
         .await
         .expect("Should refresh tokens with rotation");
 
@@ -115,7 +136,8 @@ async fn test_token_rotation() {
     assert_ne!(initial_tokens.refresh_token, new_tokens.refresh_token);
 
     // Verify new access token is valid
-    let new_access_claims = jwt_service.validate_token(&new_tokens.access_token)
+    let new_access_claims = jwt_service
+        .validate_token(&new_tokens.access_token)
         .await
         .expect("New access token should be valid");
 
@@ -123,7 +145,8 @@ async fn test_token_rotation() {
     assert_eq!(new_access_claims.email, test_user.email);
 
     // Verify new refresh token is valid
-    let new_refresh_claims = jwt_service.validate_token(&new_tokens.refresh_token)
+    let new_refresh_claims = jwt_service
+        .validate_token(&new_tokens.refresh_token)
         .await
         .expect("New refresh token should be valid");
 
@@ -137,21 +160,29 @@ async fn test_old_refresh_token_invalidated_after_rotation() {
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
     let refresh_repo = RefreshTokenRepository::new(pool.clone());
 
-    let jwt_service = JwtService::new("test_secret_key_at_least_256_bits_long", blacklist_repo, refresh_repo);
+    let jwt_service = JwtService::new(
+        "test_secret_key_at_least_256_bits_long",
+        blacklist_repo,
+        refresh_repo,
+    );
     let test_user = create_test_user(&pool, "_old_refresh").await;
 
     // Generate initial token pair
-    let initial_tokens = jwt_service.generate_token_pair(&test_user)
+    let initial_tokens = jwt_service
+        .generate_token_pair(&test_user)
         .await
         .expect("Should generate initial token pair");
 
     // Use refresh token to get new tokens with rotation
-    let _new_tokens = jwt_service.refresh_with_rotation(&initial_tokens.refresh_token, test_user.id)
+    let _new_tokens = jwt_service
+        .refresh_with_rotation(&initial_tokens.refresh_token, test_user.id)
         .await
         .expect("Should refresh tokens with rotation");
 
     // Try to use the old refresh token again - should fail
-    let result = jwt_service.refresh_with_rotation(&initial_tokens.refresh_token, test_user.id).await;
+    let result = jwt_service
+        .refresh_with_rotation(&initial_tokens.refresh_token, test_user.id)
+        .await;
     assert!(result.is_err(), "Old refresh token should be invalidated");
 }
 
@@ -161,16 +192,22 @@ async fn test_refresh_token_without_rotation() {
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
     let refresh_repo = RefreshTokenRepository::new(pool.clone());
 
-    let jwt_service = JwtService::new("test_secret_key_at_least_256_bits_long", blacklist_repo, refresh_repo);
+    let jwt_service = JwtService::new(
+        "test_secret_key_at_least_256_bits_long",
+        blacklist_repo,
+        refresh_repo,
+    );
     let test_user = create_test_user(&pool, "_no_rotation").await;
 
     // Generate initial token pair
-    let initial_tokens = jwt_service.generate_token_pair(&test_user)
+    let initial_tokens = jwt_service
+        .generate_token_pair(&test_user)
         .await
         .expect("Should generate initial token pair");
 
     // Use basic refresh (without rotation)
-    let new_access_token = jwt_service.refresh_access_token(&initial_tokens.refresh_token)
+    let new_access_token = jwt_service
+        .refresh_access_token(&initial_tokens.refresh_token)
         .await
         .expect("Should refresh access token");
 
@@ -178,7 +215,8 @@ async fn test_refresh_token_without_rotation() {
     assert_ne!(initial_tokens.access_token, new_access_token);
 
     // Verify new access token is valid
-    let new_access_claims = jwt_service.validate_token(&new_access_token)
+    let new_access_claims = jwt_service
+        .validate_token(&new_access_token)
         .await
         .expect("New access token should be valid");
 
@@ -187,7 +225,8 @@ async fn test_refresh_token_without_rotation() {
     assert!(matches!(new_access_claims.token_type, TokenType::Access));
 
     // Original refresh token should still be usable (no rotation)
-    let another_access_token = jwt_service.refresh_access_token(&initial_tokens.refresh_token)
+    let another_access_token = jwt_service
+        .refresh_access_token(&initial_tokens.refresh_token)
         .await
         .expect("Original refresh token should still work");
 
@@ -200,14 +239,20 @@ async fn test_invalid_refresh_token() {
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
     let refresh_repo = RefreshTokenRepository::new(pool);
 
-    let jwt_service = JwtService::new("test_secret_key_at_least_256_bits_long", blacklist_repo, refresh_repo);
+    let jwt_service = JwtService::new(
+        "test_secret_key_at_least_256_bits_long",
+        blacklist_repo,
+        refresh_repo,
+    );
 
     // Try to refresh with invalid token
     let result = jwt_service.refresh_access_token("invalid.token.here").await;
     assert!(result.is_err(), "Invalid token should fail validation");
 
     // Try rotation with invalid token
-    let result = jwt_service.refresh_with_rotation("invalid.token.here", Uuid::new_v4()).await;
+    let result = jwt_service
+        .refresh_with_rotation("invalid.token.here", Uuid::new_v4())
+        .await;
     assert!(result.is_err(), "Invalid token should fail rotation");
 }
 
@@ -217,20 +262,30 @@ async fn test_access_token_used_as_refresh_token() {
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
     let refresh_repo = RefreshTokenRepository::new(pool.clone());
 
-    let jwt_service = JwtService::new("test_secret_key_at_least_256_bits_long", blacklist_repo, refresh_repo);
+    let jwt_service = JwtService::new(
+        "test_secret_key_at_least_256_bits_long",
+        blacklist_repo,
+        refresh_repo,
+    );
     let test_user = create_test_user(&pool, "_access_as_refresh").await;
 
     // Generate token pair
-    let tokens = jwt_service.generate_token_pair(&test_user)
+    let tokens = jwt_service
+        .generate_token_pair(&test_user)
         .await
         .expect("Should generate token pair");
 
     // Try to use access token as refresh token - should fail
     let result = jwt_service.refresh_access_token(&tokens.access_token).await;
-    assert!(result.is_err(), "Access token should not work as refresh token");
+    assert!(
+        result.is_err(),
+        "Access token should not work as refresh token"
+    );
 
     // Try rotation with access token - should also fail
-    let result = jwt_service.refresh_with_rotation(&tokens.access_token, test_user.id).await;
+    let result = jwt_service
+        .refresh_with_rotation(&tokens.access_token, test_user.id)
+        .await;
     assert!(result.is_err(), "Access token should not work for rotation");
 }
 
@@ -240,16 +295,22 @@ async fn test_token_blacklisting() {
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
     let refresh_repo = RefreshTokenRepository::new(pool.clone());
 
-    let jwt_service = JwtService::new("test_secret_key_at_least_256_bits_long", blacklist_repo, refresh_repo);
+    let jwt_service = JwtService::new(
+        "test_secret_key_at_least_256_bits_long",
+        blacklist_repo,
+        refresh_repo,
+    );
     let test_user = create_test_user(&pool, "_blacklist").await;
 
     // Generate token pair
-    let tokens = jwt_service.generate_token_pair(&test_user)
+    let tokens = jwt_service
+        .generate_token_pair(&test_user)
         .await
         .expect("Should generate token pair");
 
     // Blacklist the access token
-    jwt_service.blacklist_token(&tokens.access_token)
+    jwt_service
+        .blacklist_token(&tokens.access_token)
         .await
         .expect("Should blacklist token successfully");
 
@@ -264,21 +325,29 @@ async fn test_refresh_token_revocation() {
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
     let refresh_repo = RefreshTokenRepository::new(pool.clone());
 
-    let jwt_service = JwtService::new("test_secret_key_at_least_256_bits_long", blacklist_repo, refresh_repo);
+    let jwt_service = JwtService::new(
+        "test_secret_key_at_least_256_bits_long",
+        blacklist_repo,
+        refresh_repo,
+    );
     let test_user = create_test_user(&pool, "_revocation").await;
 
     // Generate token pair
-    let tokens = jwt_service.generate_token_pair(&test_user)
+    let tokens = jwt_service
+        .generate_token_pair(&test_user)
         .await
         .expect("Should generate token pair");
 
     // Revoke the refresh token
-    jwt_service.revoke_refresh_token(&tokens.refresh_token)
+    jwt_service
+        .revoke_refresh_token(&tokens.refresh_token)
         .await
         .expect("Should revoke refresh token successfully");
 
     // Try to use revoked refresh token - should fail
-    let result = jwt_service.refresh_access_token(&tokens.refresh_token).await;
+    let result = jwt_service
+        .refresh_access_token(&tokens.refresh_token)
+        .await;
     assert!(result.is_err(), "Revoked refresh token should fail");
 }
 
@@ -288,16 +357,22 @@ async fn test_token_decode_without_validation() {
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
     let refresh_repo = RefreshTokenRepository::new(pool.clone());
 
-    let jwt_service = JwtService::new("test_secret_key_at_least_256_bits_long", blacklist_repo, refresh_repo);
+    let jwt_service = JwtService::new(
+        "test_secret_key_at_least_256_bits_long",
+        blacklist_repo,
+        refresh_repo,
+    );
     let test_user = create_test_user(&pool, "_decode_no_val").await;
 
     // Generate token pair
-    let tokens = jwt_service.generate_token_pair(&test_user)
+    let tokens = jwt_service
+        .generate_token_pair(&test_user)
         .await
         .expect("Should generate token pair");
 
     // Decode token without validation
-    let claims = jwt_service.decode_token_without_validation(&tokens.access_token)
+    let claims = jwt_service
+        .decode_token_without_validation(&tokens.access_token)
         .expect("Should decode token without validation");
 
     assert_eq!(claims.sub, test_user.id.to_string());

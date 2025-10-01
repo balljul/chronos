@@ -1,19 +1,18 @@
-use chronos::app::models::jwt::{LogoutRequest, LogoutResponse, TokenType, Claims, JwtError};
+use chronos::app::models::jwt::{Claims, JwtError, LogoutRequest, LogoutResponse, TokenType};
 use chronos::app::models::user::User;
-use chronos::app::services::jwt_service::JwtService;
-use chronos::app::repositories::token_blacklist_repository::TokenBlacklistRepository;
 use chronos::app::repositories::login_attempt_repository::RefreshTokenRepository;
+use chronos::app::repositories::token_blacklist_repository::TokenBlacklistRepository;
 use chronos::app::repositories::user_repository::UserRepository;
-use sqlx::PgPool;
-use uuid::Uuid;
-use time::OffsetDateTime;
-use std::env;
+use chronos::app::services::jwt_service::JwtService;
 use dotenvy::dotenv;
+use sqlx::PgPool;
+use std::env;
+use time::OffsetDateTime;
+use uuid::Uuid;
 
 async fn setup_test_pool() -> PgPool {
     dotenv().ok();
-    let database_url = env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set for tests");
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set for tests");
 
     sqlx::PgPool::connect(&database_url)
         .await
@@ -25,10 +24,14 @@ async fn create_test_user(pool: &PgPool, email_suffix: &str) -> User {
         Some("Test User".to_string()),
         format!("test{}@example.com", email_suffix),
         "TestPassword123!",
-    ).expect("Failed to create test user");
+    )
+    .expect("Failed to create test user");
 
     let user_repository = UserRepository::new(pool.clone());
-    user_repository.create(&user).await.expect("Failed to save test user")
+    user_repository
+        .create(&user)
+        .await
+        .expect("Failed to save test user")
 }
 
 #[tokio::test]
@@ -52,7 +55,8 @@ async fn test_logout_request_serialization() {
     };
 
     let json_all = serde_json::to_string(&request_all).expect("Should serialize");
-    let deserialized_all: LogoutRequest = serde_json::from_str(&json_all).expect("Should deserialize");
+    let deserialized_all: LogoutRequest =
+        serde_json::from_str(&json_all).expect("Should deserialize");
 
     assert_eq!(request_all.logout_all_devices, Some(true));
     assert_eq!(deserialized_all.logout_all_devices, Some(true));
@@ -64,7 +68,8 @@ async fn test_logout_request_serialization() {
     };
 
     let json_minimal = serde_json::to_string(&minimal_request).expect("Should serialize");
-    let deserialized_minimal: LogoutRequest = serde_json::from_str(&json_minimal).expect("Should deserialize");
+    let deserialized_minimal: LogoutRequest =
+        serde_json::from_str(&json_minimal).expect("Should deserialize");
 
     assert_eq!(minimal_request.refresh_token, None);
     assert_eq!(deserialized_minimal.logout_all_devices, None);
@@ -91,7 +96,8 @@ async fn test_logout_response_serialization() {
     };
 
     let json_no_count = serde_json::to_string(&response_no_count).expect("Should serialize");
-    let deserialized_no_count: LogoutResponse = serde_json::from_str(&json_no_count).expect("Should deserialize");
+    let deserialized_no_count: LogoutResponse =
+        serde_json::from_str(&json_no_count).expect("Should deserialize");
 
     assert_eq!(response_no_count.logged_out_devices, None);
     assert_eq!(deserialized_no_count.logged_out_devices, None);
@@ -103,50 +109,68 @@ async fn test_single_device_logout_flow() {
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
     let refresh_repo = RefreshTokenRepository::new(pool.clone());
 
-    let jwt_service = JwtService::new("test_secret_key_at_least_256_bits_long", blacklist_repo, refresh_repo);
+    let jwt_service = JwtService::new(
+        "test_secret_key_at_least_256_bits_long",
+        blacklist_repo,
+        refresh_repo,
+    );
     let test_user = create_test_user(&pool, "_single_logout").await;
 
     // Generate token pair
-    let tokens = jwt_service.generate_token_pair(&test_user)
+    let tokens = jwt_service
+        .generate_token_pair(&test_user)
         .await
         .expect("Should generate token pair");
 
     // Verify tokens are initially valid
-    let access_claims = jwt_service.validate_token(&tokens.access_token)
+    let access_claims = jwt_service
+        .validate_token(&tokens.access_token)
         .await
         .expect("Access token should be valid initially");
     assert_eq!(access_claims.sub, test_user.id.to_string());
 
-    let refresh_claims = jwt_service.validate_token(&tokens.refresh_token)
+    let refresh_claims = jwt_service
+        .validate_token(&tokens.refresh_token)
         .await
         .expect("Refresh token should be valid initially");
     assert_eq!(refresh_claims.sub, test_user.id.to_string());
 
     // Simulate logout: blacklist access token and revoke refresh token
-    jwt_service.blacklist_token(&tokens.access_token)
+    jwt_service
+        .blacklist_token(&tokens.access_token)
         .await
         .expect("Should blacklist access token");
 
-    jwt_service.revoke_refresh_token(&tokens.refresh_token)
+    jwt_service
+        .revoke_refresh_token(&tokens.refresh_token)
         .await
         .expect("Should revoke refresh token");
 
-    jwt_service.blacklist_token(&tokens.refresh_token)
+    jwt_service
+        .blacklist_token(&tokens.refresh_token)
         .await
         .expect("Should blacklist refresh token");
 
     // Verify access token is now blacklisted
     let access_result = jwt_service.validate_token(&tokens.access_token).await;
     assert!(access_result.is_err());
-    assert!(matches!(access_result.unwrap_err(), JwtError::BlacklistedToken));
+    assert!(matches!(
+        access_result.unwrap_err(),
+        JwtError::BlacklistedToken
+    ));
 
     // Verify refresh token is also blacklisted
     let refresh_result = jwt_service.validate_token(&tokens.refresh_token).await;
     assert!(refresh_result.is_err());
-    assert!(matches!(refresh_result.unwrap_err(), JwtError::BlacklistedToken));
+    assert!(matches!(
+        refresh_result.unwrap_err(),
+        JwtError::BlacklistedToken
+    ));
 
     // Verify refresh token can't be used for new tokens
-    let refresh_attempt = jwt_service.refresh_access_token(&tokens.refresh_token).await;
+    let refresh_attempt = jwt_service
+        .refresh_access_token(&tokens.refresh_token)
+        .await;
     assert!(refresh_attempt.is_err());
 
     // Cleanup
@@ -160,41 +184,79 @@ async fn test_logout_all_devices_flow() {
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
     let refresh_repo = RefreshTokenRepository::new(pool.clone());
 
-    let jwt_service = JwtService::new("test_secret_key_at_least_256_bits_long", blacklist_repo, refresh_repo);
+    let jwt_service = JwtService::new(
+        "test_secret_key_at_least_256_bits_long",
+        blacklist_repo,
+        refresh_repo,
+    );
     let test_user = create_test_user(&pool, "_all_devices_logout").await;
 
     // Generate multiple token pairs to simulate multiple devices
-    let tokens1 = jwt_service.generate_token_pair(&test_user)
+    let tokens1 = jwt_service
+        .generate_token_pair(&test_user)
         .await
         .expect("Should generate first token pair");
 
-    let tokens2 = jwt_service.generate_token_pair(&test_user)
+    let tokens2 = jwt_service
+        .generate_token_pair(&test_user)
         .await
         .expect("Should generate second token pair");
 
-    let tokens3 = jwt_service.generate_token_pair(&test_user)
+    let tokens3 = jwt_service
+        .generate_token_pair(&test_user)
         .await
         .expect("Should generate third token pair");
 
     // Verify all refresh tokens are initially valid
-    assert!(jwt_service.validate_token(&tokens1.refresh_token).await.is_ok());
-    assert!(jwt_service.validate_token(&tokens2.refresh_token).await.is_ok());
-    assert!(jwt_service.validate_token(&tokens3.refresh_token).await.is_ok());
+    assert!(
+        jwt_service
+            .validate_token(&tokens1.refresh_token)
+            .await
+            .is_ok()
+    );
+    assert!(
+        jwt_service
+            .validate_token(&tokens2.refresh_token)
+            .await
+            .is_ok()
+    );
+    assert!(
+        jwt_service
+            .validate_token(&tokens3.refresh_token)
+            .await
+            .is_ok()
+    );
 
     // Logout all devices - revoke all refresh tokens for the user
-    jwt_service.revoke_all_user_refresh_tokens(test_user.id)
+    jwt_service
+        .revoke_all_user_refresh_tokens(test_user.id)
         .await
         .expect("Should revoke all user refresh tokens");
 
     // Verify all refresh tokens can no longer be used
-    let refresh1_result = jwt_service.refresh_access_token(&tokens1.refresh_token).await;
-    assert!(refresh1_result.is_err(), "First refresh token should be revoked");
+    let refresh1_result = jwt_service
+        .refresh_access_token(&tokens1.refresh_token)
+        .await;
+    assert!(
+        refresh1_result.is_err(),
+        "First refresh token should be revoked"
+    );
 
-    let refresh2_result = jwt_service.refresh_access_token(&tokens2.refresh_token).await;
-    assert!(refresh2_result.is_err(), "Second refresh token should be revoked");
+    let refresh2_result = jwt_service
+        .refresh_access_token(&tokens2.refresh_token)
+        .await;
+    assert!(
+        refresh2_result.is_err(),
+        "Second refresh token should be revoked"
+    );
 
-    let refresh3_result = jwt_service.refresh_access_token(&tokens3.refresh_token).await;
-    assert!(refresh3_result.is_err(), "Third refresh token should be revoked");
+    let refresh3_result = jwt_service
+        .refresh_access_token(&tokens3.refresh_token)
+        .await;
+    assert!(
+        refresh3_result.is_err(),
+        "Third refresh token should be revoked"
+    );
 
     // Cleanup
     let user_repository = UserRepository::new(pool);
@@ -207,7 +269,11 @@ async fn test_logout_with_invalid_token() {
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
     let refresh_repo = RefreshTokenRepository::new(pool.clone());
 
-    let jwt_service = JwtService::new("test_secret_key_at_least_256_bits_long", blacklist_repo, refresh_repo);
+    let jwt_service = JwtService::new(
+        "test_secret_key_at_least_256_bits_long",
+        blacklist_repo,
+        refresh_repo,
+    );
 
     // Test with completely invalid token
     let invalid_token = "invalid.token.here";
@@ -232,11 +298,16 @@ async fn test_logout_with_expired_token() {
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
     let refresh_repo = RefreshTokenRepository::new(pool.clone());
 
-    let jwt_service = JwtService::new("test_secret_key_at_least_256_bits_long", blacklist_repo, refresh_repo);
+    let jwt_service = JwtService::new(
+        "test_secret_key_at_least_256_bits_long",
+        blacklist_repo,
+        refresh_repo,
+    );
     let test_user = create_test_user(&pool, "_expired_logout").await;
 
     // Generate token pair
-    let tokens = jwt_service.generate_token_pair(&test_user)
+    let tokens = jwt_service
+        .generate_token_pair(&test_user)
         .await
         .expect("Should generate token pair");
 
@@ -254,7 +325,9 @@ async fn test_logout_with_expired_token() {
     let blacklist_result = jwt_service.blacklist_token(&tokens.access_token).await;
     assert!(blacklist_result.is_ok());
 
-    let revoke_result = jwt_service.revoke_refresh_token(&tokens.refresh_token).await;
+    let revoke_result = jwt_service
+        .revoke_refresh_token(&tokens.refresh_token)
+        .await;
     assert!(revoke_result.is_ok());
 
     // Cleanup
@@ -268,19 +341,26 @@ async fn test_token_cleanup_during_logout() {
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
     let refresh_repo = RefreshTokenRepository::new(pool.clone());
 
-    let jwt_service = JwtService::new("test_secret_key_at_least_256_bits_long", blacklist_repo, refresh_repo);
+    let jwt_service = JwtService::new(
+        "test_secret_key_at_least_256_bits_long",
+        blacklist_repo,
+        refresh_repo,
+    );
     let test_user = create_test_user(&pool, "_cleanup_logout").await;
 
     // Generate some tokens and blacklist them
-    let tokens = jwt_service.generate_token_pair(&test_user)
+    let tokens = jwt_service
+        .generate_token_pair(&test_user)
         .await
         .expect("Should generate token pair");
 
-    jwt_service.blacklist_token(&tokens.access_token)
+    jwt_service
+        .blacklist_token(&tokens.access_token)
         .await
         .expect("Should blacklist access token");
 
-    jwt_service.blacklist_token(&tokens.refresh_token)
+    jwt_service
+        .blacklist_token(&tokens.refresh_token)
         .await
         .expect("Should blacklist refresh token");
 
@@ -305,11 +385,16 @@ async fn test_concurrent_logout_operations() {
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
     let refresh_repo = RefreshTokenRepository::new(pool.clone());
 
-    let jwt_service = JwtService::new("test_secret_key_at_least_256_bits_long", blacklist_repo, refresh_repo);
+    let jwt_service = JwtService::new(
+        "test_secret_key_at_least_256_bits_long",
+        blacklist_repo,
+        refresh_repo,
+    );
     let test_user = create_test_user(&pool, "_concurrent_logout").await;
 
     // Generate token pair
-    let tokens = jwt_service.generate_token_pair(&test_user)
+    let tokens = jwt_service
+        .generate_token_pair(&test_user)
         .await
         .expect("Should generate token pair");
 
@@ -321,17 +406,12 @@ async fn test_concurrent_logout_operations() {
     let refresh_token1 = tokens.refresh_token.clone();
     let refresh_token2 = tokens.refresh_token.clone();
 
-    let task1 = tokio::spawn(async move {
-        jwt_service1.blacklist_token(&access_token1).await
-    });
+    let task1 = tokio::spawn(async move { jwt_service1.blacklist_token(&access_token1).await });
 
-    let task2 = tokio::spawn(async move {
-        jwt_service2.blacklist_token(&access_token2).await
-    });
+    let task2 = tokio::spawn(async move { jwt_service2.blacklist_token(&access_token2).await });
 
-    let task3 = tokio::spawn(async move {
-        jwt_service.revoke_refresh_token(&refresh_token1).await
-    });
+    let task3 =
+        tokio::spawn(async move { jwt_service.revoke_refresh_token(&refresh_token1).await });
 
     // Wait for all tasks to complete
     let results = futures::future::join_all(vec![task1, task2, task3]).await;
@@ -343,7 +423,10 @@ async fn test_concurrent_logout_operations() {
         .filter(|r| r.is_ok())
         .count();
 
-    assert!(successful_operations > 0, "At least one concurrent operation should succeed");
+    assert!(
+        successful_operations > 0,
+        "At least one concurrent operation should succeed"
+    );
 
     // Cleanup
     let user_repository = UserRepository::new(pool);
@@ -356,11 +439,16 @@ async fn test_logout_idempotency() {
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
     let refresh_repo = RefreshTokenRepository::new(pool.clone());
 
-    let jwt_service = JwtService::new("test_secret_key_at_least_256_bits_long", blacklist_repo, refresh_repo);
+    let jwt_service = JwtService::new(
+        "test_secret_key_at_least_256_bits_long",
+        blacklist_repo,
+        refresh_repo,
+    );
     let test_user = create_test_user(&pool, "_idempotent_logout").await;
 
     // Generate token pair
-    let tokens = jwt_service.generate_token_pair(&test_user)
+    let tokens = jwt_service
+        .generate_token_pair(&test_user)
         .await
         .expect("Should generate token pair");
 
@@ -373,7 +461,9 @@ async fn test_logout_idempotency() {
         }
         // Subsequent calls should either succeed (idempotent) or fail gracefully
 
-        let revoke_result = jwt_service.revoke_refresh_token(&tokens.refresh_token).await;
+        let revoke_result = jwt_service
+            .revoke_refresh_token(&tokens.refresh_token)
+            .await;
         // Similar expectation for revoke operations
         if i == 1 {
             assert!(revoke_result.is_ok(), "First revoke should succeed");
@@ -383,7 +473,10 @@ async fn test_logout_idempotency() {
     // Token should still be blacklisted after multiple operations
     let validation_result = jwt_service.validate_token(&tokens.access_token).await;
     assert!(validation_result.is_err());
-    assert!(matches!(validation_result.unwrap_err(), JwtError::BlacklistedToken));
+    assert!(matches!(
+        validation_result.unwrap_err(),
+        JwtError::BlacklistedToken
+    ));
 
     // Cleanup
     let user_repository = UserRepository::new(pool);
@@ -396,7 +489,11 @@ async fn test_logout_edge_cases() {
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
     let refresh_repo = RefreshTokenRepository::new(pool);
 
-    let jwt_service = JwtService::new("test_secret_key_at_least_256_bits_long", blacklist_repo, refresh_repo);
+    let jwt_service = JwtService::new(
+        "test_secret_key_at_least_256_bits_long",
+        blacklist_repo,
+        refresh_repo,
+    );
 
     // Test with empty string token
     let empty_result = jwt_service.blacklist_token("").await;

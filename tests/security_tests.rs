@@ -1,8 +1,8 @@
-use std::time::Duration;
 use chronos::app::middleware::security::{
-    SecurityState, check_registration_rate_limit, check_refresh_rate_limit,
-    check_password_reset_rate_limit, log_security_event
+    SecurityState, check_password_reset_rate_limit, check_refresh_rate_limit,
+    check_registration_rate_limit, log_security_event,
 };
+use std::time::Duration;
 
 #[tokio::test]
 async fn test_registration_rate_limiting() {
@@ -33,7 +33,10 @@ async fn test_refresh_rate_limiting() {
 
     // 11th attempt should fail due to rate limit
     let result = check_refresh_rate_limit(&security_state, test_user_id);
-    assert!(result.is_err(), "11th refresh attempt should be rate limited");
+    assert!(
+        result.is_err(),
+        "11th refresh attempt should be rate limited"
+    );
 }
 
 #[tokio::test]
@@ -44,12 +47,19 @@ async fn test_password_reset_rate_limiting() {
     // First 3 attempts should succeed
     for i in 0..3 {
         let result = check_password_reset_rate_limit(&security_state, test_email);
-        assert!(result.is_ok(), "Password reset attempt {} should succeed", i + 1);
+        assert!(
+            result.is_ok(),
+            "Password reset attempt {} should succeed",
+            i + 1
+        );
     }
 
     // 4th attempt should fail due to rate limit
     let result = check_password_reset_rate_limit(&security_state, test_email);
-    assert!(result.is_err(), "4th password reset attempt should be rate limited");
+    assert!(
+        result.is_err(),
+        "4th password reset attempt should be rate limited"
+    );
 }
 
 #[tokio::test]
@@ -208,31 +218,55 @@ async fn test_realistic_rate_limiting_scenario() {
         // Each IP should be able to do 5 registrations
         for i in 0..5 {
             let result = check_registration_rate_limit(&security_state, ip);
-            assert!(result.is_ok(), "Registration {} for {} should succeed", i + 1, ip);
+            assert!(
+                result.is_ok(),
+                "Registration {} for {} should succeed",
+                i + 1,
+                ip
+            );
         }
 
         // 6th registration should fail
-        assert!(check_registration_rate_limit(&security_state, ip).is_err(),
-                "6th registration for {} should fail", ip);
+        assert!(
+            check_registration_rate_limit(&security_state, ip).is_err(),
+            "6th registration for {} should fail",
+            ip
+        );
 
         // Each email should be able to do 3 password resets
         for i in 0..3 {
             let result = check_password_reset_rate_limit(&security_state, email);
-            assert!(result.is_ok(), "Password reset {} for {} should succeed", i + 1, email);
+            assert!(
+                result.is_ok(),
+                "Password reset {} for {} should succeed",
+                i + 1,
+                email
+            );
         }
 
         // 4th password reset should fail
-        assert!(check_password_reset_rate_limit(&security_state, email).is_err(),
-                "4th password reset for {} should fail", email);
+        assert!(
+            check_password_reset_rate_limit(&security_state, email).is_err(),
+            "4th password reset for {} should fail",
+            email
+        );
 
         // Each user should be able to do 10 refresh attempts
         for i in 0..10 {
             let result = check_refresh_rate_limit(&security_state, user_id);
-            assert!(result.is_ok(), "Refresh {} for {} should succeed", i + 1, user_id);
+            assert!(
+                result.is_ok(),
+                "Refresh {} for {} should succeed",
+                i + 1,
+                user_id
+            );
         }
 
         // 11th refresh should fail
-        assert!(check_refresh_rate_limit(&security_state, user_id).is_err(),
-                "11th refresh for {} should fail", user_id);
+        assert!(
+            check_refresh_rate_limit(&security_state, user_id).is_err(),
+            "11th refresh for {} should fail",
+            user_id
+        );
     }
 }

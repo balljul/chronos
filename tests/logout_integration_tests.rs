@@ -1,26 +1,25 @@
 use axum::{
     body::Body,
-    http::{Request, StatusCode, HeaderValue},
     extract::connect_info::MockConnectInfo,
+    http::{HeaderValue, Request, StatusCode},
 };
-use serde_json::{json, Value};
-use tower::ServiceExt;
-use tower::ServiceBuilder;
-use tower_http::{
-    trace::TraceLayer,
-    request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
-};
-use chronos::routes;
 use chronos::app::middleware::security::{SecurityHeadersLayer, get_cors_layer};
+use chronos::routes;
+use dotenvy::dotenv;
+use serde_json::{Value, json};
 use sqlx::PgPool;
 use std::env;
 use std::net::SocketAddr;
-use dotenvy::dotenv;
+use tower::ServiceBuilder;
+use tower::ServiceExt;
+use tower_http::{
+    request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
+    trace::TraceLayer,
+};
 
 async fn setup_test_pool() -> PgPool {
     dotenv().ok();
-    let database_url = env::var("DATABASE_URL")
-        .expect("DATABASE_URL must be set for tests");
+    let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set for tests");
 
     sqlx::PgPool::connect(&database_url)
         .await
@@ -40,12 +39,15 @@ async fn create_test_app() -> axum::Router {
             .layer(SecurityHeadersLayer)
             .layer(get_cors_layer())
             .layer(MockConnectInfo(
-                "192.168.1.1:8080".parse::<SocketAddr>().unwrap()
-            ))
+                "192.168.1.1:8080".parse::<SocketAddr>().unwrap(),
+            )),
     )
 }
 
-async fn register_test_user(app: &axum::Router, email: &str) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+async fn register_test_user(
+    app: &axum::Router,
+    email: &str,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let register_request = Request::builder()
         .uri("/api/auth/register")
         .method("POST")
@@ -55,7 +57,8 @@ async fn register_test_user(app: &axum::Router, email: &str) -> Result<Value, Bo
                 "email": email,
                 "password": "StrongP@ssw0rd123",
                 "name": "Test User"
-            }).to_string()
+            })
+            .to_string(),
         ))?;
 
     let response = app.clone().oneshot(register_request).await?;
@@ -69,7 +72,10 @@ async fn register_test_user(app: &axum::Router, email: &str) -> Result<Value, Bo
     }
 }
 
-async fn login_test_user(app: &axum::Router, email: &str) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
+async fn login_test_user(
+    app: &axum::Router,
+    email: &str,
+) -> Result<Value, Box<dyn std::error::Error + Send + Sync>> {
     let login_request = Request::builder()
         .uri("/api/auth/login")
         .method("POST")
@@ -78,7 +84,8 @@ async fn login_test_user(app: &axum::Router, email: &str) -> Result<Value, Box<d
             json!({
                 "email": email,
                 "password": "StrongP@ssw0rd123"
-            }).to_string()
+            })
+            .to_string(),
         ))?;
 
     let response = app.clone().oneshot(login_request).await?;
@@ -102,7 +109,8 @@ async fn test_logout_with_valid_token_integration() {
         // User might already exist, try login directly
     }
 
-    let login_data = login_test_user(&app, test_email).await
+    let login_data = login_test_user(&app, test_email)
+        .await
         .expect("Should be able to login");
 
     let access_token = login_data["tokens"]["access_token"]
@@ -123,7 +131,8 @@ async fn test_logout_with_valid_token_integration() {
             json!({
                 "refresh_token": refresh_token,
                 "logout_all_devices": false
-            }).to_string()
+            })
+            .to_string(),
         ))
         .unwrap();
 
@@ -131,7 +140,9 @@ async fn test_logout_with_valid_token_integration() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let logout_data: Value = serde_json::from_slice(&body_bytes).unwrap();
 
     assert_eq!(logout_data["message"], "Logged out successfully");
@@ -151,7 +162,8 @@ async fn test_logout_all_devices_integration() {
         // User might already exist, try login directly
     }
 
-    let login_data = login_test_user(&app, test_email).await
+    let login_data = login_test_user(&app, test_email)
+        .await
         .expect("Should be able to login");
 
     let access_token = login_data["tokens"]["access_token"]
@@ -172,7 +184,8 @@ async fn test_logout_all_devices_integration() {
             json!({
                 "refresh_token": refresh_token,
                 "logout_all_devices": true
-            }).to_string()
+            })
+            .to_string(),
         ))
         .unwrap();
 
@@ -180,7 +193,9 @@ async fn test_logout_all_devices_integration() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let logout_data: Value = serde_json::from_slice(&body_bytes).unwrap();
 
     assert_eq!(logout_data["message"], "Logged out successfully");
@@ -200,7 +215,8 @@ async fn test_logout_without_token_integration() {
         .body(Body::from(
             json!({
                 "logout_all_devices": false
-            }).to_string()
+            })
+            .to_string(),
         ))
         .unwrap();
 
@@ -209,7 +225,9 @@ async fn test_logout_without_token_integration() {
     // Should return success to prevent information leakage
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let logout_data: Value = serde_json::from_slice(&body_bytes).unwrap();
 
     assert_eq!(logout_data["message"], "Logged out successfully");
@@ -229,7 +247,8 @@ async fn test_logout_with_invalid_token_integration() {
         .body(Body::from(
             json!({
                 "logout_all_devices": false
-            }).to_string()
+            })
+            .to_string(),
         ))
         .unwrap();
 
@@ -238,7 +257,9 @@ async fn test_logout_with_invalid_token_integration() {
     // Should return success even with invalid token (prevents information leakage)
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let logout_data: Value = serde_json::from_slice(&body_bytes).unwrap();
 
     assert_eq!(logout_data["message"], "Logged out successfully");
@@ -257,7 +278,8 @@ async fn test_logout_with_malformed_authorization_header_integration() {
         .body(Body::from(
             json!({
                 "logout_all_devices": false
-            }).to_string()
+            })
+            .to_string(),
         ))
         .unwrap();
 
@@ -277,7 +299,8 @@ async fn test_logout_token_becomes_unusable_integration() {
         // User might already exist, try login directly
     }
 
-    let login_data = login_test_user(&app, test_email).await
+    let login_data = login_test_user(&app, test_email)
+        .await
         .expect("Should be able to login");
 
     let access_token = login_data["tokens"]["access_token"]
@@ -301,7 +324,8 @@ async fn test_logout_token_becomes_unusable_integration() {
             json!({
                 "refresh_token": refresh_token,
                 "logout_all_devices": false
-            }).to_string()
+            })
+            .to_string(),
         ))
         .unwrap();
 
@@ -316,7 +340,8 @@ async fn test_logout_token_becomes_unusable_integration() {
         .body(Body::from(
             json!({
                 "refresh_token": refresh_token
-            }).to_string()
+            })
+            .to_string(),
         ))
         .unwrap();
 
@@ -334,7 +359,8 @@ async fn test_logout_token_becomes_unusable_integration() {
         .body(Body::from(
             json!({
                 "logout_all_devices": false
-            }).to_string()
+            })
+            .to_string(),
         ))
         .unwrap();
 
@@ -354,7 +380,8 @@ async fn test_logout_with_different_user_agents_integration() {
         // User might already exist, try login directly
     }
 
-    let login_data = login_test_user(&app, test_email).await
+    let login_data = login_test_user(&app, test_email)
+        .await
         .expect("Should be able to login");
 
     let access_token = login_data["tokens"]["access_token"]
@@ -380,14 +407,21 @@ async fn test_logout_with_different_user_agents_integration() {
             .body(Body::from(
                 json!({
                     "logout_all_devices": false
-                }).to_string()
+                })
+                .to_string(),
             ))
             .unwrap();
 
         let response = app.clone().oneshot(logout_request).await.unwrap();
 
         // All should succeed (first one actually logs out, subsequent ones are idempotent)
-        assert_eq!(response.status(), StatusCode::OK, "Failed for user agent {}: {}", i, user_agent);
+        assert_eq!(
+            response.status(),
+            StatusCode::OK,
+            "Failed for user agent {}: {}",
+            i,
+            user_agent
+        );
     }
 }
 
@@ -401,7 +435,8 @@ async fn test_logout_minimal_request_integration() {
         // User might already exist, try login directly
     }
 
-    let login_data = login_test_user(&app, test_email).await
+    let login_data = login_test_user(&app, test_email)
+        .await
         .expect("Should be able to login");
 
     let access_token = login_data["tokens"]["access_token"]
@@ -421,7 +456,9 @@ async fn test_logout_minimal_request_integration() {
 
     assert_eq!(response.status(), StatusCode::OK);
 
-    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX).await.unwrap();
+    let body_bytes = axum::body::to_bytes(response.into_body(), usize::MAX)
+        .await
+        .unwrap();
     let logout_data: Value = serde_json::from_slice(&body_bytes).unwrap();
 
     assert_eq!(logout_data["message"], "Logged out successfully");
@@ -458,8 +495,14 @@ async fn test_logout_response_headers_integration() {
     assert_eq!(headers.get("x-xss-protection").unwrap(), "1; mode=block");
 
     assert!(headers.contains_key("strict-transport-security"));
-    assert!(headers.get("strict-transport-security").unwrap()
-            .to_str().unwrap().contains("max-age=31536000"));
+    assert!(
+        headers
+            .get("strict-transport-security")
+            .unwrap()
+            .to_str()
+            .unwrap()
+            .contains("max-age=31536000")
+    );
 }
 
 #[tokio::test]
@@ -472,7 +515,8 @@ async fn test_logout_with_invalid_json_integration() {
         // User might already exist, try login directly
     }
 
-    let login_data = login_test_user(&app, test_email).await
+    let login_data = login_test_user(&app, test_email)
+        .await
         .expect("Should be able to login");
 
     let access_token = login_data["tokens"]["access_token"]
@@ -504,7 +548,8 @@ async fn test_logout_performance_integration() {
         // User might already exist, try login directly
     }
 
-    let login_data = login_test_user(&app, test_email).await
+    let login_data = login_test_user(&app, test_email)
+        .await
         .expect("Should be able to login");
 
     let access_token = login_data["tokens"]["access_token"]
@@ -522,7 +567,8 @@ async fn test_logout_performance_integration() {
         .body(Body::from(
             json!({
                 "logout_all_devices": true
-            }).to_string()
+            })
+            .to_string(),
         ))
         .unwrap();
 
@@ -533,5 +579,9 @@ async fn test_logout_performance_integration() {
     assert_eq!(response.status(), StatusCode::OK);
 
     // Logout should complete within reasonable time (5 seconds is generous for tests)
-    assert!(duration.as_secs() < 5, "Logout took too long: {:?}", duration);
+    assert!(
+        duration.as_secs() < 5,
+        "Logout took too long: {:?}",
+        duration
+    );
 }
