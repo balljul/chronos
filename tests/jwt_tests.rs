@@ -2,6 +2,7 @@ use chronos::app::models::jwt::{Claims, TokenType, JwtError, BlacklistedToken};
 use chronos::app::models::user::User;
 use chronos::app::services::jwt_service::JwtService;
 use chronos::app::repositories::token_blacklist_repository::TokenBlacklistRepository;
+use chronos::app::repositories::login_attempt_repository::RefreshTokenRepository;
 use chronos::app::repositories::user_repository::UserRepository;
 use sqlx::PgPool;
 use uuid::Uuid;
@@ -11,7 +12,8 @@ use time::OffsetDateTime;
 async fn test_jwt_token_generation() {
     let pool = get_test_pool().await;
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
-    let jwt_service = JwtService::new("test-secret-key", blacklist_repo);
+    let refresh_token_repo = RefreshTokenRepository::new(pool.clone());
+    let jwt_service = JwtService::new("test-secret-key", blacklist_repo, refresh_token_repo);
 
     let user = User::new(
         Some("Test User".to_string()),
@@ -38,7 +40,7 @@ async fn test_jwt_token_generation() {
 async fn test_jwt_token_validation() {
     let pool = get_test_pool().await;
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
-    let jwt_service = JwtService::new("test-secret-key", blacklist_repo);
+    let jwt_service = JwtService::new("test-secret-key", blacklist_repo, RefreshTokenRepository::new(pool.clone()));
 
     let user = User::new(
         Some("Test User".to_string()),
@@ -66,7 +68,7 @@ async fn test_jwt_token_validation() {
 async fn test_jwt_token_validation_with_invalid_token() {
     let pool = get_test_pool().await;
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
-    let jwt_service = JwtService::new("test-secret-key", blacklist_repo);
+    let jwt_service = JwtService::new("test-secret-key", blacklist_repo, RefreshTokenRepository::new(pool.clone()));
 
     // Test with completely invalid token
     let result = jwt_service.validate_token("invalid.token.here").await;
@@ -82,10 +84,10 @@ async fn test_jwt_token_validation_with_invalid_token() {
 async fn test_jwt_token_validation_with_wrong_secret() {
     let pool = get_test_pool().await;
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
-    let jwt_service1 = JwtService::new("secret1", blacklist_repo);
+    let jwt_service1 = JwtService::new("secret1", blacklist_repo, RefreshTokenRepository::new(pool.clone()));
 
-    let blacklist_repo2 = TokenBlacklistRepository::new(pool);
-    let jwt_service2 = JwtService::new("secret2", blacklist_repo2);
+    let blacklist_repo2 = TokenBlacklistRepository::new(pool.clone());
+    let jwt_service2 = JwtService::new("secret2", blacklist_repo2, RefreshTokenRepository::new(pool.clone()));
 
     let user = User::new(
         Some("Test User".to_string()),
@@ -106,7 +108,7 @@ async fn test_jwt_token_validation_with_wrong_secret() {
 async fn test_refresh_token_functionality() {
     let pool = get_test_pool().await;
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
-    let jwt_service = JwtService::new("test-secret-key", blacklist_repo);
+    let jwt_service = JwtService::new("test-secret-key", blacklist_repo, RefreshTokenRepository::new(pool.clone()));
 
     let user = User::new(
         Some("Test User".to_string()),
@@ -136,7 +138,7 @@ async fn test_refresh_token_functionality() {
 async fn test_refresh_token_with_access_token_should_fail() {
     let pool = get_test_pool().await;
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
-    let jwt_service = JwtService::new("test-secret-key", blacklist_repo);
+    let jwt_service = JwtService::new("test-secret-key", blacklist_repo, RefreshTokenRepository::new(pool.clone()));
 
     let user = User::new(
         Some("Test User".to_string()),
@@ -156,7 +158,7 @@ async fn test_refresh_token_with_access_token_should_fail() {
 async fn test_token_blacklisting() {
     let pool = get_test_pool().await;
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
-    let jwt_service = JwtService::new("test-secret-key", blacklist_repo);
+    let jwt_service = JwtService::new("test-secret-key", blacklist_repo, RefreshTokenRepository::new(pool.clone()));
 
     let user = User::new(
         Some("Test User".to_string()),
@@ -263,7 +265,7 @@ async fn test_jwt_error_display() {
 async fn test_cleanup_expired_blacklisted_tokens() {
     let pool = get_test_pool().await;
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
-    let jwt_service = JwtService::new("test-secret-key", blacklist_repo);
+    let jwt_service = JwtService::new("test-secret-key", blacklist_repo, RefreshTokenRepository::new(pool.clone()));
 
     let user = User::new(
         Some("Test User".to_string()),
@@ -299,7 +301,7 @@ async fn test_cleanup_expired_blacklisted_tokens() {
 async fn test_token_uniqueness() {
     let pool = get_test_pool().await;
     let blacklist_repo = TokenBlacklistRepository::new(pool.clone());
-    let jwt_service = JwtService::new("test-secret-key", blacklist_repo);
+    let jwt_service = JwtService::new("test-secret-key", blacklist_repo, RefreshTokenRepository::new(pool.clone()));
 
     let user = User::new(
         Some("Test User".to_string()),
