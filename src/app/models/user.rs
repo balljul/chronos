@@ -15,7 +15,7 @@ pub struct User {
     pub updated_at: Option<time::OffsetDateTime>
 }
 
-#[derive(Debug, Serialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct UserResponse {
     pub id: Uuid,
     pub name: Option<String>,
