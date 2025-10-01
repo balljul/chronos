@@ -14,7 +14,7 @@ fi
 
 # Build the WebAssembly package
 echo "Compiling Rust to WebAssembly..."
-wasm-pack build --target web --out-dir pkg --release -- --no-default-features
+RUSTFLAGS='--cfg getrandom_backend="wasm_js"' wasm-pack build --target web --out-dir pkg --release -- --no-default-features --features wasm
 
 echo "WebAssembly build complete!"
 echo ""
