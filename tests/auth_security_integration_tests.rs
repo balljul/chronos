@@ -26,7 +26,7 @@ async fn create_test_app() -> axum::Router {
 async fn test_registration_rate_limiting_integration() {
     let app = create_test_app().await;
 
-    let test_email = "ratelimit@example.com";
+    let _test_email = "ratelimit@example.com";
     let test_ip = "192.168.100.1";
 
     // First 5 registration attempts should succeed (or fail with validation, not rate limiting)

@@ -438,8 +438,10 @@ mod integration_tests {
     async fn test_refresh_token_response_structure() {
         let response = RefreshTokenResponse {
             access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.new.access".to_string(),
+            refresh_token: Some("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.new.refresh".to_string()),
             token_type: "Bearer".to_string(),
             expires_in: 900,
+            refresh_expires_in: Some(604800),
         };
 
         // Test serialization
@@ -605,8 +607,10 @@ mod integration_tests {
 
         let refresh_response = RefreshTokenResponse {
             access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.new_access".to_string(),
+            refresh_token: Some("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.new_refresh".to_string()),
             token_type: "Bearer".to_string(),
             expires_in: 900,
+            refresh_expires_in: Some(604800),
         };
 
         // Step 6: Logout

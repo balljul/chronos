@@ -186,7 +186,7 @@ async fn test_security_headers_and_responses() {
 }
 
 // Helper function to measure response time (for timing attack prevention testing)
-async fn measure_response_time<F, Fut>(operation: F) -> (std::time::Duration, F::Output)
+async fn measure_response_time<F, Fut>(operation: F) -> (std::time::Duration, Fut::Output)
 where
     F: FnOnce() -> Fut,
     Fut: std::future::Future,
