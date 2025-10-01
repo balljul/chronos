@@ -1,14 +1,14 @@
-use std::env;
+use crate::app::middleware::security::{SecurityHeadersLayer, get_cors_layer};
+use crate::routes;
 use sqlx::PgPool;
+use std::env;
 use tokio::net::TcpListener;
 use tower::ServiceBuilder;
 use tower_http::{
-    trace::TraceLayer,
     request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
+    trace::TraceLayer,
 };
 use tracing_subscriber::{layer::SubscriberExt, util::SubscriberInitExt};
-use crate::routes;
-use crate::app::middleware::security::{SecurityHeadersLayer, get_cors_layer};
 
 pub async fn build(pool: PgPool) {
     // Initialize tracing
@@ -36,7 +36,7 @@ pub async fn build(pool: PgPool) {
             .layer(PropagateRequestIdLayer::x_request_id())
             .layer(TraceLayer::new_for_http())
             .layer(SecurityHeadersLayer)
-            .layer(get_cors_layer())
+            .layer(get_cors_layer()),
     );
 
     let service = tower::make::Shared::new(app.into_service());
