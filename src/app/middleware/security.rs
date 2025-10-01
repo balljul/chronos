@@ -1,9 +1,9 @@
 use axum::{
+    Json,
     body::Body,
     extract::{ConnectInfo, Request},
     http::{HeaderMap, HeaderName, HeaderValue, StatusCode},
     response::{IntoResponse, Response},
-    Json,
 };
 use dashmap::DashMap;
 use serde_json::json;
@@ -84,14 +84,17 @@ pub fn check_registration_rate_limit(
     security_state: &SecurityState,
     ip: &str,
 ) -> Result<(), Response> {
-    let mut ip_limit = security_state.ip_rate_limiter
+    let mut ip_limit = security_state
+        .ip_rate_limiter
         .entry(ip.to_string())
         .or_insert_with(IpRateLimit::new);
 
     let now = Instant::now();
     let one_hour_ago = now - Duration::from_secs(3600);
 
-    ip_limit.registration_attempts.retain(|&time| time > one_hour_ago);
+    ip_limit
+        .registration_attempts
+        .retain(|&time| time > one_hour_ago);
 
     if ip_limit.registration_attempts.len() >= 5 {
         warn!("Registration rate limit exceeded for IP: {}", ip);
@@ -107,18 +110,18 @@ pub fn check_registration_rate_limit(
     Ok(())
 }
 
-pub fn check_login_rate_limit(
-    security_state: &SecurityState,
-    ip: &str,
-) -> Result<(), Response> {
-    let mut ip_limit = security_state.ip_rate_limiter
+pub fn check_login_rate_limit(security_state: &SecurityState, ip: &str) -> Result<(), Response> {
+    let mut ip_limit = security_state
+        .ip_rate_limiter
         .entry(ip.to_string())
         .or_insert_with(IpRateLimit::new);
 
     let now = Instant::now();
     let fifteen_minutes_ago = now - Duration::from_secs(900);
 
-    ip_limit.login_attempts.retain(|&time| time > fifteen_minutes_ago);
+    ip_limit
+        .login_attempts
+        .retain(|&time| time > fifteen_minutes_ago);
 
     if ip_limit.login_attempts.len() >= 5 {
         warn!("Login rate limit exceeded for IP: {}", ip);
@@ -138,14 +141,17 @@ pub fn check_refresh_rate_limit(
     security_state: &SecurityState,
     user_id: &str,
 ) -> Result<(), Response> {
-    let mut user_limit = security_state.user_rate_limiter
+    let mut user_limit = security_state
+        .user_rate_limiter
         .entry(user_id.to_string())
         .or_insert_with(UserRateLimit::new);
 
     let now = Instant::now();
     let one_minute_ago = now - Duration::from_secs(60);
 
-    user_limit.refresh_attempts.retain(|&time| time > one_minute_ago);
+    user_limit
+        .refresh_attempts
+        .retain(|&time| time > one_minute_ago);
 
     if user_limit.refresh_attempts.len() >= 10 {
         warn!("Token refresh rate limit exceeded for user: {}", user_id);
@@ -165,14 +171,17 @@ pub fn check_password_reset_rate_limit(
     security_state: &SecurityState,
     email: &str,
 ) -> Result<(), Response> {
-    let mut email_limit = security_state.email_rate_limiter
+    let mut email_limit = security_state
+        .email_rate_limiter
         .entry(email.to_string())
         .or_insert_with(EmailRateLimit::new);
 
     let now = Instant::now();
     let one_hour_ago = now - Duration::from_secs(3600);
 
-    email_limit.password_reset_attempts.retain(|&time| time > one_hour_ago);
+    email_limit
+        .password_reset_attempts
+        .retain(|&time| time > one_hour_ago);
 
     if email_limit.password_reset_attempts.len() >= 3 {
         warn!("Password reset rate limit exceeded for email: {}", email);
@@ -266,9 +275,14 @@ where
 {
     type Response = S::Response;
     type Error = S::Error;
-    type Future = std::pin::Pin<Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>>;
+    type Future = std::pin::Pin<
+        Box<dyn std::future::Future<Output = Result<Self::Response, Self::Error>> + Send>,
+    >;
 
-    fn poll_ready(&mut self, cx: &mut std::task::Context<'_>) -> std::task::Poll<Result<(), Self::Error>> {
+    fn poll_ready(
+        &mut self,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Result<(), Self::Error>> {
         self.inner.poll_ready(cx)
     }
 
@@ -325,18 +339,26 @@ pub fn cleanup_rate_limiters(security_state: &SecurityState) {
     let cleanup_threshold = Duration::from_secs(7200); // 2 hours
 
     security_state.ip_rate_limiter.retain(|_, limit| {
-        limit.registration_attempts.retain(|&time| now.duration_since(time) < cleanup_threshold);
-        limit.login_attempts.retain(|&time| now.duration_since(time) < cleanup_threshold);
+        limit
+            .registration_attempts
+            .retain(|&time| now.duration_since(time) < cleanup_threshold);
+        limit
+            .login_attempts
+            .retain(|&time| now.duration_since(time) < cleanup_threshold);
         !limit.registration_attempts.is_empty() || !limit.login_attempts.is_empty()
     });
 
     security_state.user_rate_limiter.retain(|_, limit| {
-        limit.refresh_attempts.retain(|&time| now.duration_since(time) < cleanup_threshold);
+        limit
+            .refresh_attempts
+            .retain(|&time| now.duration_since(time) < cleanup_threshold);
         !limit.refresh_attempts.is_empty()
     });
 
     security_state.email_rate_limiter.retain(|_, limit| {
-        limit.password_reset_attempts.retain(|&time| now.duration_since(time) < cleanup_threshold);
+        limit
+            .password_reset_attempts
+            .retain(|&time| now.duration_since(time) < cleanup_threshold);
         !limit.password_reset_attempts.is_empty()
     });
 }

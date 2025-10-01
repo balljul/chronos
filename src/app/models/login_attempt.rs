@@ -1,6 +1,6 @@
-use serde::{Serialize, Deserialize};
-use uuid::Uuid;
+use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LoginAttempt {
@@ -15,7 +15,12 @@ pub struct LoginAttempt {
 }
 
 impl LoginAttempt {
-    pub fn new_success(ip_address: String, email: String, user_id: Uuid, user_agent: Option<String>) -> Self {
+    pub fn new_success(
+        ip_address: String,
+        email: String,
+        user_id: Uuid,
+        user_agent: Option<String>,
+    ) -> Self {
         Self {
             id: Uuid::new_v4(),
             ip_address,
@@ -28,7 +33,12 @@ impl LoginAttempt {
         }
     }
 
-    pub fn new_failure(ip_address: String, email: String, failure_reason: String, user_agent: Option<String>) -> Self {
+    pub fn new_failure(
+        ip_address: String,
+        email: String,
+        failure_reason: String,
+        user_agent: Option<String>,
+    ) -> Self {
         Self {
             id: Uuid::new_v4(),
             ip_address,

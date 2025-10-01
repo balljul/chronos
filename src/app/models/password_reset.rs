@@ -1,7 +1,10 @@
-use uuid::Uuid;
-use serde::{Serialize, Deserialize};
+use argon2::{
+    Argon2, PasswordHash, PasswordHasher, PasswordVerifier,
+    password_hash::{SaltString, rand_core::OsRng},
+};
+use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier, password_hash::{rand_core::OsRng, SaltString}};
+use uuid::Uuid;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PasswordResetToken {
@@ -38,7 +41,9 @@ impl PasswordResetToken {
     pub fn verify_token(&self, token: &str) -> Result<bool, argon2::password_hash::Error> {
         let parsed_hash = PasswordHash::new(&self.token_hash)?;
         let argon2 = Argon2::default();
-        Ok(argon2.verify_password(token.as_bytes(), &parsed_hash).is_ok())
+        Ok(argon2
+            .verify_password(token.as_bytes(), &parsed_hash)
+            .is_ok())
     }
 
     pub fn is_expired(&self) -> bool {

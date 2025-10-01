@@ -1,12 +1,12 @@
+use crate::app::models::jwt::{AuthContext, JwtError};
+use crate::app::services::jwt_service::JwtService;
 use axum::{
     extract::{Request, State},
-    http::{header::AUTHORIZATION, StatusCode},
+    http::{StatusCode, header::AUTHORIZATION},
     middleware::Next,
     response::Response,
 };
 use std::sync::Arc;
-use crate::app::models::jwt::{AuthContext, JwtError};
-use crate::app::services::jwt_service::JwtService;
 
 // Auth middleware that validates JWT tokens
 pub async fn jwt_auth_middleware(
@@ -22,8 +22,8 @@ pub async fn jwt_auth_middleware(
         .ok_or(StatusCode::UNAUTHORIZED)?;
 
     // Extract token from header
-    let token = JwtService::extract_token_from_header(auth_header)
-        .map_err(|_| StatusCode::UNAUTHORIZED)?;
+    let token =
+        JwtService::extract_token_from_header(auth_header).map_err(|_| StatusCode::UNAUTHORIZED)?;
 
     // Validate token
     let claims = jwt_service
@@ -59,7 +59,7 @@ pub async fn jwt_auth_middleware_with_json_errors(
         None => {
             return create_auth_error_response(
                 StatusCode::UNAUTHORIZED,
-                "Missing authorization header"
+                "Missing authorization header",
             );
         }
     };
@@ -70,7 +70,7 @@ pub async fn jwt_auth_middleware_with_json_errors(
         Err(_) => {
             return create_auth_error_response(
                 StatusCode::UNAUTHORIZED,
-                "Invalid authorization header format"
+                "Invalid authorization header format",
             );
         }
     };

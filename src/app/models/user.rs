@@ -1,8 +1,11 @@
-use uuid::Uuid;
-use serde::{Serialize, Deserialize};
+use argon2::{
+    Argon2, PasswordHash, PasswordHasher, PasswordVerifier,
+    password_hash::{SaltString, rand_core::OsRng},
+};
+use serde::{Deserialize, Serialize};
 use time;
+use uuid::Uuid;
 use validator::Validate;
-use argon2::{Argon2, PasswordHash, PasswordHasher, PasswordVerifier, password_hash::{rand_core::OsRng, SaltString}};
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct User {
@@ -12,7 +15,7 @@ pub struct User {
     pub email: String,
     pub password_hash: String,
     pub created_at: Option<time::OffsetDateTime>,
-    pub updated_at: Option<time::OffsetDateTime>
+    pub updated_at: Option<time::OffsetDateTime>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -24,7 +27,11 @@ pub struct UserResponse {
 }
 
 impl User {
-    pub fn new(name: Option<String>, email: String, password: &str) -> Result<Self, argon2::password_hash::Error> {
+    pub fn new(
+        name: Option<String>,
+        email: String,
+        password: &str,
+    ) -> Result<Self, argon2::password_hash::Error> {
         let password_hash = Self::hash_password(password)?;
 
         Ok(Self {
@@ -47,7 +54,9 @@ impl User {
     pub fn verify_password(&self, password: &str) -> Result<bool, argon2::password_hash::Error> {
         let parsed_hash = PasswordHash::new(&self.password_hash)?;
         let argon2 = Argon2::default();
-        Ok(argon2.verify_password(password.as_bytes(), &parsed_hash).is_ok())
+        Ok(argon2
+            .verify_password(password.as_bytes(), &parsed_hash)
+            .is_ok())
     }
 
     pub fn to_response(&self) -> UserResponse {
