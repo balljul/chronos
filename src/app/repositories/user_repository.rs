@@ -3,6 +3,7 @@ use uuid::Uuid;
 use time::OffsetDateTime;
 use crate::app::models::user::User;
 
+#[derive(Clone)]
 pub struct UserRepository {
     pool: PgPool,
 }

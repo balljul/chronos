@@ -3,6 +3,7 @@ use uuid::Uuid;
 use time::OffsetDateTime;
 use crate::app::models::password_reset::PasswordResetToken;
 
+#[derive(Clone)]
 pub struct PasswordResetRepository {
     pool: PgPool,
 }
