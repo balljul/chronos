@@ -95,3 +95,26 @@ mod tests {
         assert!(validate_password("MyPassw0rd1").is_err());
     }
 }
+
+#[derive(Debug, Serialize, Deserialize, Validate)]
+pub struct ForgotPasswordRequest {
+    #[validate(email(message = "Invalid email format"))]
+    pub email: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ForgotPasswordResponse {
+    pub message: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Validate)]
+pub struct ResetPasswordRequest {
+    pub token: String,
+    #[validate(custom(function = "validate_password", message = "Password must be at least 8 characters long, contain at least one uppercase letter, one lowercase letter, one number, and one special character"))]
+    pub password: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct ResetPasswordResponse {
+    pub message: String,
+}
