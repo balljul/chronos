@@ -9,8 +9,10 @@ use chronos::app::repositories::user_repository::UserRepository;
 use sqlx::{PgPool, postgres::PgPoolOptions};
 use std::env;
 use uuid::Uuid;
+use dotenvy::dotenv;
 
 async fn setup_test_pool() -> PgPool {
+    dotenv().ok();
     let database_url = env::var("DATABASE_URL")
         .unwrap_or_else(|_| "postgresql://postgres:password@localhost:5432/chronos_test".to_string());
 

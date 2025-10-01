@@ -38,17 +38,6 @@ impl AuthAppState {
 }
 
 pub fn routes() -> Router<AuthAppState> {
-    // Configure rate limiting: general auth endpoints limited to prevent DoS
-    // Note: Login has specific rate limiting (5 failed attempts per 15 minutes)
-    // implemented in SecureLoginService, this is additional protection
-    let governor_conf = Box::new(
-        GovernorConfigBuilder::default()
-            .per_second(5)  // 5 requests per second max
-            .burst_size(10) // Allow bursts of 10
-            .finish()
-            .unwrap(),
-    );
-
     // Routes that don't require authentication
     let public_routes = Router::new()
         .route("/register", post(register))
@@ -64,7 +53,27 @@ pub fn routes() -> Router<AuthAppState> {
     Router::new()
         .merge(public_routes)
         .merge(protected_routes)
-        .layer(GovernorLayer::new(governor_conf))
+}
+
+fn extract_real_ip(addr: SocketAddr, headers: &HeaderMap) -> String {
+    // Check for forwarded IP headers first (for proxy/load balancer scenarios)
+    if let Some(forwarded_for) = headers.get("x-forwarded-for") {
+        if let Ok(forwarded_str) = forwarded_for.to_str() {
+            // x-forwarded-for can contain multiple IPs, take the first one
+            if let Some(first_ip) = forwarded_str.split(',').next() {
+                return first_ip.trim().to_string();
+            }
+        }
+    }
+
+    if let Some(real_ip) = headers.get("x-real-ip") {
+        if let Ok(real_ip_str) = real_ip.to_str() {
+            return real_ip_str.to_string();
+        }
+    }
+
+    // Fall back to connection IP
+    addr.ip().to_string()
 }
 
 async fn register(
@@ -73,7 +82,7 @@ async fn register(
     headers: HeaderMap,
     Json(request): Json<RegisterRequest>,
 ) -> Result<(StatusCode, Json<RegisterResponse>), (StatusCode, Json<AuthError>)> {
-    let ip_address = addr.ip().to_string();
+    let ip_address = extract_real_ip(addr, &headers);
     let user_agent = headers.get("user-agent")
         .and_then(|h| h.to_str().ok());
 
@@ -107,7 +116,7 @@ async fn forgot_password(
     headers: HeaderMap,
     Json(request): Json<ForgotPasswordRequest>,
 ) -> Result<(StatusCode, Json<ForgotPasswordResponse>), (StatusCode, Json<AuthError>)> {
-    let ip_address = addr.ip().to_string();
+    let ip_address = extract_real_ip(addr, &headers);
     let user_agent = headers.get("user-agent")
         .and_then(|h| h.to_str().ok());
 

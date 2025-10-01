@@ -1,14 +1,24 @@
 use axum::{
     body::Body,
     http::{Request, StatusCode},
+    extract::connect_info::MockConnectInfo,
 };
 use serde_json::{json, Value};
 use tower::ServiceExt;
+use tower::ServiceBuilder;
+use tower_http::{
+    trace::TraceLayer,
+    request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
+};
 use chronos::routes;
+use chronos::app::middleware::security::{SecurityHeadersLayer, get_cors_layer};
 use sqlx::PgPool;
 use std::env;
+use std::net::SocketAddr;
+use dotenvy::dotenv;
 
 async fn setup_test_pool() -> PgPool {
+    dotenv().ok();
     let database_url = env::var("DATABASE_URL")
         .expect("DATABASE_URL must be set for tests");
 
@@ -19,7 +29,20 @@ async fn setup_test_pool() -> PgPool {
 
 async fn create_test_app() -> axum::Router {
     let pool = setup_test_pool().await;
-    routes::create_router(pool)
+    let app = routes::create_router(pool);
+
+    // Add security middleware layers like in the main app
+    app.layer(
+        ServiceBuilder::new()
+            .layer(SetRequestIdLayer::x_request_id(MakeRequestUuid))
+            .layer(PropagateRequestIdLayer::x_request_id())
+            .layer(TraceLayer::new_for_http())
+            .layer(SecurityHeadersLayer)
+            .layer(get_cors_layer())
+            .layer(MockConnectInfo(
+                "192.168.1.1:8080".parse::<SocketAddr>().unwrap()
+            ))
+    )
 }
 
 #[tokio::test]
