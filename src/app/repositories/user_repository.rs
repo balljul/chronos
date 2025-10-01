@@ -18,12 +18,12 @@ impl UserRepository {
             r#"
             INSERT INTO users (id, first_name, email, password_hash, created_at, updated_at)
             VALUES ($1, $2, $3, $4, $5, $6)
-            RETURNING id, first_name as name, email, password_hash as password, created_at, updated_at
+            RETURNING id, first_name as name, email, password_hash, created_at, updated_at
             "#,
             user.id,
             user.name,
             user.email,
-            user.password,
+            user.password_hash,
             user.created_at,
             user.updated_at
         )
@@ -37,7 +37,7 @@ impl UserRepository {
         let user = sqlx::query_as!(
             User,
             r#"
-            SELECT id, first_name as name, email, password_hash as password, created_at, updated_at
+            SELECT id, first_name as name, email, password_hash, created_at, updated_at
             FROM users
             WHERE id = $1
             "#,
@@ -53,7 +53,7 @@ impl UserRepository {
         let user = sqlx::query_as!(
             User,
             r#"
-            SELECT id, first_name as name, email, password_hash as password, created_at, updated_at
+            SELECT id, first_name as name, email, password_hash, created_at, updated_at
             FROM users
             WHERE email = $1
             "#,
@@ -69,7 +69,7 @@ impl UserRepository {
         let users = sqlx::query_as!(
             User,
             r#"
-            SELECT id, first_name as name, email, password_hash as password, created_at, updated_at
+            SELECT id, first_name as name, email, password_hash, created_at, updated_at
             FROM users
             ORDER BY created_at DESC
             "#
@@ -80,7 +80,7 @@ impl UserRepository {
         Ok(users)
     }
 
-    pub async fn update(&self, id: Uuid, name: Option<&str>, email: Option<&str>, password: Option<&str>) -> SqlxResult<Option<User>> {
+    pub async fn update(&self, id: Uuid, name: Option<&str>, email: Option<&str>, password_hash: Option<&str>) -> SqlxResult<Option<User>> {
         let user = sqlx::query_as!(
             User,
             r#"
@@ -91,12 +91,12 @@ impl UserRepository {
                 password_hash = COALESCE($4, password_hash),
                 updated_at = $5
             WHERE id = $1
-            RETURNING id, first_name as name, email, password_hash as password, created_at, updated_at
+            RETURNING id, first_name as name, email, password_hash, created_at, updated_at
             "#,
             id,
             name,
             email,
-            password,
+            password_hash,
             OffsetDateTime::now_utc()
         )
         .fetch_optional(&self.pool)
