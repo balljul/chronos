@@ -1,11 +1,13 @@
-use time::OffsetDateTime;
-use uuid::Uuid;
-use crate::app::models::jwt::{LoginRequest, LoginResponse};
 use crate::app::models::auth::AuthError;
-use crate::app::models::login_attempt::{LoginAttempt, AccountLockout};
+use crate::app::models::jwt::{LoginRequest, LoginResponse};
+use crate::app::models::login_attempt::{AccountLockout, LoginAttempt};
+use crate::app::repositories::login_attempt_repository::{
+    AccountLockoutRepository, LoginAttemptRepository,
+};
 use crate::app::services::auth_service::AuthService;
 use crate::app::services::jwt_service::JwtService;
-use crate::app::repositories::login_attempt_repository::{LoginAttemptRepository, AccountLockoutRepository};
+use time::OffsetDateTime;
+use uuid::Uuid;
 
 pub struct SecureLoginService {
     auth_service: AuthService,
@@ -55,7 +57,9 @@ impl SecureLoginService {
                 eprintln!("Failed to log login attempt: {}", e);
             }
 
-            return Err(AuthError::new("Too many failed login attempts. Please try again later."));
+            return Err(AuthError::new(
+                "Too many failed login attempts. Please try again later.",
+            ));
         }
 
         // Step 2: Find user by email
@@ -82,7 +86,11 @@ impl SecureLoginService {
         };
 
         // Step 3: Check account lockout (10 failed attempts, 30 min lockout)
-        if let Ok(Some(lockout)) = self.account_lockout_repository.get_active_lockout(user.id).await {
+        if let Ok(Some(lockout)) = self
+            .account_lockout_repository
+            .get_active_lockout(user.id)
+            .await
+        {
             if lockout.is_locked() {
                 let attempt = LoginAttempt::new_failure(
                     ip_address,
@@ -95,9 +103,14 @@ impl SecureLoginService {
                     eprintln!("Failed to log login attempt: {}", e);
                 }
 
-                let locked_until = lockout.locked_until.format(&time::format_description::well_known::Rfc3339)
+                let locked_until = lockout
+                    .locked_until
+                    .format(&time::format_description::well_known::Rfc3339)
                     .unwrap_or("unknown time".to_string());
-                return Err(AuthError::new(&format!("Account is temporarily locked until {}. Please try again later.", locked_until)));
+                return Err(AuthError::new(&format!(
+                    "Account is temporarily locked until {}. Please try again later.",
+                    locked_until
+                )));
             }
         }
 
@@ -143,10 +156,16 @@ impl SecureLoginService {
                 if user_failures >= 9 {
                     // This is the 10th failure, lock the account
                     let lockout = AccountLockout::new(user.id, (user_failures + 1) as i32, 30);
-                    if let Err(e) = self.account_lockout_repository.create_lockout(&lockout).await {
+                    if let Err(e) = self
+                        .account_lockout_repository
+                        .create_lockout(&lockout)
+                        .await
+                    {
                         eprintln!("Failed to create account lockout: {}", e);
                     }
-                    return Err(AuthError::new("Account has been temporarily locked due to too many failed login attempts. Please try again in 30 minutes."));
+                    return Err(AuthError::new(
+                        "Account has been temporarily locked due to too many failed login attempts. Please try again in 30 minutes.",
+                    ));
                 }
             }
 
@@ -173,19 +192,23 @@ impl SecureLoginService {
         };
 
         // Step 7: Log successful login attempt
-        let success_attempt = LoginAttempt::new_success(
-            ip_address,
-            request.email,
-            user.id,
-            user_agent,
-        );
+        let success_attempt =
+            LoginAttempt::new_success(ip_address, request.email, user.id, user_agent);
 
-        if let Err(e) = self.login_attempt_repository.create_attempt(&success_attempt).await {
+        if let Err(e) = self
+            .login_attempt_repository
+            .create_attempt(&success_attempt)
+            .await
+        {
             eprintln!("Failed to log successful login attempt: {}", e);
         }
 
         // Step 8: Unlock account if it was locked (successful login resets lockout)
-        if let Err(e) = self.account_lockout_repository.unlock_account(user.id).await {
+        if let Err(e) = self
+            .account_lockout_repository
+            .unlock_account(user.id)
+            .await
+        {
             eprintln!("Failed to unlock account: {}", e);
         }
 

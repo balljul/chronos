@@ -21,7 +21,11 @@ impl MockEmailService {
         }
     }
 
-    pub async fn send_password_reset_email(&self, email: &str, token: &str) -> Result<(), EmailError> {
+    pub async fn send_password_reset_email(
+        &self,
+        email: &str,
+        token: &str,
+    ) -> Result<(), EmailError> {
         let subject = "Password Reset Request - Chronos".to_string();
         let body = format!(
             r#"

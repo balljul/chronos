@@ -1,12 +1,15 @@
-use jsonwebtoken::{decode, encode, DecodingKey, EncodingKey, Header, Validation, Algorithm};
+use crate::app::models::jwt::{BlacklistedToken, Claims, JwtError, TokenPair, TokenType};
+use crate::app::models::login_attempt::RefreshTokenStorage;
+use crate::app::models::user::User;
+use crate::app::repositories::login_attempt_repository::RefreshTokenRepository;
+use crate::app::repositories::token_blacklist_repository::TokenBlacklistRepository;
+use argon2::{
+    Argon2, PasswordHasher,
+    password_hash::{SaltString, rand_core::OsRng},
+};
+use jsonwebtoken::{Algorithm, DecodingKey, EncodingKey, Header, Validation, decode, encode};
 use time::OffsetDateTime;
 use uuid::Uuid;
-use argon2::{Argon2, PasswordHasher, password_hash::{rand_core::OsRng, SaltString}};
-use crate::app::models::jwt::{Claims, TokenType, TokenPair, JwtError, BlacklistedToken};
-use crate::app::models::user::User;
-use crate::app::models::login_attempt::RefreshTokenStorage;
-use crate::app::repositories::token_blacklist_repository::TokenBlacklistRepository;
-use crate::app::repositories::login_attempt_repository::RefreshTokenRepository;
 
 #[derive(Clone)]
 pub struct JwtService {
@@ -17,7 +20,11 @@ pub struct JwtService {
 }
 
 impl JwtService {
-    pub fn new(secret: &str, blacklist_repository: TokenBlacklistRepository, refresh_token_repository: RefreshTokenRepository) -> Self {
+    pub fn new(
+        secret: &str,
+        blacklist_repository: TokenBlacklistRepository,
+        refresh_token_repository: RefreshTokenRepository,
+    ) -> Self {
         Self {
             encoding_key: EncodingKey::from_secret(secret.as_bytes()),
             decoding_key: DecodingKey::from_secret(secret.as_bytes()),
@@ -67,23 +74,21 @@ impl JwtService {
         let token_hash = self.hash_token(&refresh_token)?;
 
         // Store refresh token in database
-        let refresh_token_storage = RefreshTokenStorage::new(
-            refresh_jti,
-            user.id,
-            token_hash,
-            refresh_exp,
-        );
+        let refresh_token_storage =
+            RefreshTokenStorage::new(refresh_jti, user.id, token_hash, refresh_exp);
 
         self.refresh_token_repository
             .store_token(&refresh_token_storage)
             .await
-            .map_err(|e| JwtError::TokenCreationError(format!("Failed to store refresh token: {}", e)))?;
+            .map_err(|e| {
+                JwtError::TokenCreationError(format!("Failed to store refresh token: {}", e))
+            })?;
 
         Ok(TokenPair {
             access_token,
             refresh_token,
             token_type: "Bearer".to_string(),
-            expires_in: 15 * 60, // 15 minutes in seconds
+            expires_in: 15 * 60,                  // 15 minutes in seconds
             refresh_expires_in: 7 * 24 * 60 * 60, // 7 days in seconds
         })
     }
@@ -94,33 +99,46 @@ impl JwtService {
 
         // Verify it's a refresh token
         match claims.token_type {
-            TokenType::Refresh => {},
-            TokenType::Access => return Err(JwtError::InvalidToken("Access token provided, refresh token required".to_string())),
+            TokenType::Refresh => {}
+            TokenType::Access => {
+                return Err(JwtError::InvalidToken(
+                    "Access token provided, refresh token required".to_string(),
+                ));
+            }
         }
 
         // Validate refresh token against database storage
-        let stored_token = self.refresh_token_repository
+        let stored_token = self
+            .refresh_token_repository
             .find_by_jti(&claims.jti)
             .await
             .map_err(|e| JwtError::InvalidToken(format!("Database error: {}", e)))?;
 
-        let stored_token = stored_token.ok_or(JwtError::InvalidToken("Refresh token not found".to_string()))?;
+        let stored_token = stored_token.ok_or(JwtError::InvalidToken(
+            "Refresh token not found".to_string(),
+        ))?;
 
         if !stored_token.is_valid() {
-            return Err(JwtError::InvalidToken("Refresh token is revoked or expired".to_string()));
+            return Err(JwtError::InvalidToken(
+                "Refresh token is revoked or expired".to_string(),
+            ));
         }
 
         // Verify the token hash matches
         let token_hash = self.hash_token(refresh_token)?;
         if stored_token.token_hash != token_hash {
-            return Err(JwtError::InvalidToken("Refresh token hash mismatch".to_string()));
+            return Err(JwtError::InvalidToken(
+                "Refresh token hash mismatch".to_string(),
+            ));
         }
 
         // Update last used time
         self.refresh_token_repository
             .update_last_used(&claims.jti)
             .await
-            .map_err(|e| JwtError::TokenCreationError(format!("Failed to update token usage: {}", e)))?;
+            .map_err(|e| {
+                JwtError::TokenCreationError(format!("Failed to update token usage: {}", e))
+            })?;
 
         // Generate new access token
         let now = OffsetDateTime::now_utc();
@@ -142,38 +160,55 @@ impl JwtService {
     }
 
     // Refresh with token rotation for enhanced security
-    pub async fn refresh_with_rotation(&self, refresh_token: &str, user_id: Uuid) -> Result<TokenPair, JwtError> {
+    pub async fn refresh_with_rotation(
+        &self,
+        refresh_token: &str,
+        user_id: Uuid,
+    ) -> Result<TokenPair, JwtError> {
         let claims = self.validate_token(refresh_token).await?;
 
         // Verify it's a refresh token
         match claims.token_type {
-            TokenType::Refresh => {},
-            TokenType::Access => return Err(JwtError::InvalidToken("Access token provided, refresh token required".to_string())),
+            TokenType::Refresh => {}
+            TokenType::Access => {
+                return Err(JwtError::InvalidToken(
+                    "Access token provided, refresh token required".to_string(),
+                ));
+            }
         }
 
         // Validate refresh token against database storage
-        let stored_token = self.refresh_token_repository
+        let stored_token = self
+            .refresh_token_repository
             .find_by_jti(&claims.jti)
             .await
             .map_err(|e| JwtError::InvalidToken(format!("Database error: {}", e)))?;
 
-        let stored_token = stored_token.ok_or(JwtError::InvalidToken("Refresh token not found".to_string()))?;
+        let stored_token = stored_token.ok_or(JwtError::InvalidToken(
+            "Refresh token not found".to_string(),
+        ))?;
 
         if !stored_token.is_valid() {
-            return Err(JwtError::InvalidToken("Refresh token is revoked or expired".to_string()));
+            return Err(JwtError::InvalidToken(
+                "Refresh token is revoked or expired".to_string(),
+            ));
         }
 
         // Verify the token hash matches
         let token_hash = self.hash_token(refresh_token)?;
         if stored_token.token_hash != token_hash {
-            return Err(JwtError::InvalidToken("Refresh token hash mismatch".to_string()));
+            return Err(JwtError::InvalidToken(
+                "Refresh token hash mismatch".to_string(),
+            ));
         }
 
         // Revoke the old refresh token
         self.refresh_token_repository
             .revoke_token(&claims.jti)
             .await
-            .map_err(|e| JwtError::TokenCreationError(format!("Failed to revoke old refresh token: {}", e)))?;
+            .map_err(|e| {
+                JwtError::TokenCreationError(format!("Failed to revoke old refresh token: {}", e))
+            })?;
 
         // Create a mock user object for token generation
         let user = User {
@@ -194,11 +229,12 @@ impl JwtService {
         let mut validation = Validation::new(Algorithm::HS256);
         validation.validate_exp = true;
 
-        let token_data = decode::<Claims>(token, &self.decoding_key, &validation)
-            .map_err(|e| match e.kind() {
+        let token_data = decode::<Claims>(token, &self.decoding_key, &validation).map_err(|e| {
+            match e.kind() {
                 jsonwebtoken::errors::ErrorKind::ExpiredSignature => JwtError::ExpiredToken,
                 _ => JwtError::InvalidToken(e.to_string()),
-            })?;
+            }
+        })?;
 
         // Check if token is blacklisted
         if self.is_token_blacklisted(&token_data.claims.jti).await? {
@@ -226,12 +262,8 @@ impl JwtService {
         let user_id = Uuid::parse_str(&claims.sub)
             .map_err(|_| JwtError::InvalidClaims("Invalid user ID".to_string()))?;
 
-        let blacklisted_token = BlacklistedToken::new(
-            claims.jti,
-            user_id,
-            claims.token_type,
-            expires_at,
-        );
+        let blacklisted_token =
+            BlacklistedToken::new(claims.jti, user_id, claims.token_type, expires_at);
 
         self.blacklist_repository
             .blacklist_token(&blacklisted_token)
@@ -258,7 +290,9 @@ impl JwtService {
         if auth_header.starts_with("Bearer ") {
             Ok(&auth_header[7..])
         } else {
-            Err(JwtError::InvalidToken("Invalid authorization header format".to_string()))
+            Err(JwtError::InvalidToken(
+                "Invalid authorization header format".to_string(),
+            ))
         }
     }
 
@@ -280,7 +314,9 @@ impl JwtService {
             self.refresh_token_repository
                 .revoke_token(&claims.jti)
                 .await
-                .map_err(|e| JwtError::TokenCreationError(format!("Failed to revoke refresh token: {}", e)))?;
+                .map_err(|e| {
+                    JwtError::TokenCreationError(format!("Failed to revoke refresh token: {}", e))
+                })?;
         }
 
         Ok(())
@@ -291,7 +327,9 @@ impl JwtService {
         self.refresh_token_repository
             .revoke_all_user_tokens(user_id)
             .await
-            .map_err(|e| JwtError::TokenCreationError(format!("Failed to revoke user tokens: {}", e)))
+            .map_err(|e| {
+                JwtError::TokenCreationError(format!("Failed to revoke user tokens: {}", e))
+            })
     }
 
     // Clean up expired blacklisted tokens (maintenance task)
@@ -308,15 +346,16 @@ impl JwtService {
         self.refresh_token_repository
             .cleanup_expired_tokens()
             .await
-            .map_err(|e| JwtError::TokenCreationError(format!("Refresh token cleanup failed: {}", e)))
+            .map_err(|e| {
+                JwtError::TokenCreationError(format!("Refresh token cleanup failed: {}", e))
+            })
     }
 }
 
 // Helper function to get JWT secret from environment
 pub fn get_jwt_secret() -> String {
-    std::env::var("JWT_SECRET")
-        .unwrap_or_else(|_| {
-            eprintln!("Warning: JWT_SECRET not set, using default (not secure for production!)");
-            "your-256-bit-secret-for-development-only-change-in-production".to_string()
-        })
+    std::env::var("JWT_SECRET").unwrap_or_else(|_| {
+        eprintln!("Warning: JWT_SECRET not set, using default (not secure for production!)");
+        "your-256-bit-secret-for-development-only-change-in-production".to_string()
+    })
 }
