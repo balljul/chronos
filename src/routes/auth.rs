@@ -262,48 +262,99 @@ async fn refresh_token(
 
 async fn logout(
     State(state): State<AuthAppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: axum::http::HeaderMap,
     Json(request): Json<LogoutRequest>,
 ) -> Result<(StatusCode, Json<LogoutResponse>), (StatusCode, String)> {
+    let ip_address = extract_real_ip(addr, &headers);
+    let user_agent = headers.get("user-agent")
+        .and_then(|h| h.to_str().ok());
+
     // Extract and validate the access token from Authorization header
     let auth_header = headers
         .get(axum::http::header::AUTHORIZATION)
-        .and_then(|header| header.to_str().ok())
-        .ok_or_else(|| (StatusCode::UNAUTHORIZED, "Missing authorization header".to_string()))?;
+        .and_then(|header| header.to_str().ok());
 
-    let access_token = JwtService::extract_token_from_header(auth_header)
-        .map_err(|err| (StatusCode::UNAUTHORIZED, err.to_string()))?;
+    let access_token = if let Some(header) = auth_header {
+        JwtService::extract_token_from_header(header)
+            .map_err(|err| (StatusCode::UNAUTHORIZED, err.to_string()))?
+    } else {
+        // Return success even if no token provided (prevents information leakage)
+        log_security_event("logout_no_token", &ip_address, user_agent, None, None, true, Some("Logout attempted without token"));
 
-    // Validate the access token
-    state.jwt_service
-        .validate_token(access_token)
-        .await
-        .map_err(|err| {
-            let status = match err {
-                JwtError::ExpiredToken | JwtError::BlacklistedToken | JwtError::InvalidToken(_) => StatusCode::UNAUTHORIZED,
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
-            };
-            (status, err.to_string())
-        })?;
+        let response = LogoutResponse {
+            message: "Logged out successfully".to_string(),
+            logged_out_devices: None,
+        };
+        return Ok((StatusCode::OK, Json(response)));
+    };
 
-    // Blacklist the current access token
-    if let Err(error) = state.jwt_service.blacklist_token(access_token).await {
-        return Err((StatusCode::INTERNAL_SERVER_ERROR, error.to_string()));
-    }
+    // Get user info from token (even if expired/invalid for logging)
+    let claims = match state.jwt_service.decode_token_without_validation(access_token) {
+        Ok(claims) => Some(claims),
+        Err(_) => None,
+    };
 
-    // If refresh token is provided, revoke it properly
-    if let Some(refresh_token) = request.refresh_token {
-        if let Err(error) = state.jwt_service.revoke_refresh_token(&refresh_token).await {
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, error.to_string()));
+    let user_id = claims.as_ref()
+        .and_then(|c| Uuid::parse_str(&c.sub).ok());
+    let user_email = claims.as_ref()
+        .map(|c| &c.email);
+
+    // Always try to perform logout operations, but don't fail if token is already invalid
+    let mut logged_out_devices = 0u32;
+
+    // Blacklist the current access token (ignore errors for invalid/expired tokens)
+    let _ = state.jwt_service.blacklist_token(access_token).await;
+    logged_out_devices += 1;
+
+    if let Some(user_id) = user_id {
+        // Handle "logout all devices" functionality
+        if request.logout_all_devices.unwrap_or(false) {
+            // Revoke all refresh tokens for the user
+            match state.jwt_service.revoke_all_user_refresh_tokens(user_id).await {
+                Ok(()) => {
+                    // Note: We can't easily count revoked devices, so we use a placeholder
+                    logged_out_devices = 999; // Indicates "all devices"
+                    log_security_event("logout_all_devices", &ip_address, user_agent,
+                                     Some(&user_id.to_string()), user_email.map(|x| x.as_str()), true,
+                                     Some("All devices logged out"));
+                },
+                Err(error) => {
+                    log_security_event("logout_all_devices_failed", &ip_address, user_agent,
+                                     Some(&user_id.to_string()), user_email.map(|x| x.as_str()), false,
+                                     Some(&error.to_string()));
+                }
+            }
+        } else {
+            // Handle single device logout
+            if let Some(refresh_token) = &request.refresh_token {
+                // Try to revoke the specific refresh token (ignore errors)
+                let _ = state.jwt_service.revoke_refresh_token(refresh_token).await;
+                let _ = state.jwt_service.blacklist_token(refresh_token).await;
+            }
         }
-        // Also blacklist the refresh token
-        if let Err(error) = state.jwt_service.blacklist_token(&refresh_token).await {
-            return Err((StatusCode::INTERNAL_SERVER_ERROR, error.to_string()));
-        }
+
+        // Cleanup expired tokens during logout
+        let _ = state.jwt_service.cleanup_expired_blacklisted_tokens().await;
+        let _ = state.jwt_service.cleanup_expired_refresh_tokens().await;
+
+        log_security_event("logout_successful", &ip_address, user_agent,
+                         Some(&user_id.to_string()), user_email.map(|x| x.as_str()), true,
+                         Some(&format!("Devices logged out: {}", logged_out_devices)));
+    } else {
+        log_security_event("logout_invalid_token", &ip_address, user_agent, None, None, true,
+                         Some("Logout with invalid token"));
     }
 
     let response = LogoutResponse {
         message: "Logged out successfully".to_string(),
+        logged_out_devices: if logged_out_devices == 999 {
+            None // Don't expose the actual count for "all devices"
+        } else if logged_out_devices > 0 {
+            Some(logged_out_devices)
+        } else {
+            None
+        },
     };
 
     Ok((StatusCode::OK, Json(response)))

@@ -58,11 +58,13 @@ pub struct RefreshTokenResponse {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LogoutRequest {
     pub refresh_token: Option<String>,
+    pub logout_all_devices: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LogoutResponse {
     pub message: String,
+    pub logged_out_devices: Option<u32>,
 }
 
 // Token blacklist model for database storage
