@@ -9,6 +9,7 @@ pub struct EmailMessage {
 }
 
 // Mock email service for testing - stores emails in memory
+#[derive(Clone)]
 pub struct MockEmailService {
     sent_emails: Arc<Mutex<Vec<EmailMessage>>>,
 }
@@ -20,7 +21,11 @@ impl MockEmailService {
         }
     }
 
-    pub async fn send_password_reset_email(&self, email: &str, token: &str) -> Result<(), EmailError> {
+    pub async fn send_password_reset_email(
+        &self,
+        email: &str,
+        token: &str,
+    ) -> Result<(), EmailError> {
         let subject = "Password Reset Request - Chronos".to_string();
         let body = format!(
             r#"

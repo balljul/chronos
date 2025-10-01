@@ -1,11 +1,11 @@
-use chronos::app::models::auth::{ForgotPasswordRequest, ResetPasswordRequest, AuthError};
+use chronos::app::models::auth::{AuthError, ForgotPasswordRequest, ResetPasswordRequest};
 use chronos::app::models::password_reset::PasswordResetToken;
 use chronos::app::models::user::User;
 use chronos::app::services::email_service::MockEmailService;
 use serde_json;
-use validator::Validate;
-use uuid::Uuid;
 use time::OffsetDateTime;
+use uuid::Uuid;
+use validator::Validate;
 
 #[cfg(test)]
 mod password_reset_tests {
@@ -157,7 +157,9 @@ mod password_reset_tests {
         assert_eq!(email_service.count_sent_emails(), 0);
 
         // Send password reset email
-        let result = email_service.send_password_reset_email(test_email, test_token).await;
+        let result = email_service
+            .send_password_reset_email(test_email, test_token)
+            .await;
         assert!(result.is_ok());
 
         // Check email was recorded
@@ -170,7 +172,10 @@ mod password_reset_tests {
         assert!(last_email.body.contains("Chronos"));
 
         // Send another email
-        email_service.send_password_reset_email("another@example.com", "another_token").await.unwrap();
+        email_service
+            .send_password_reset_email("another@example.com", "another_token")
+            .await
+            .unwrap();
         assert_eq!(email_service.count_sent_emails(), 2);
 
         // Clear emails
@@ -208,7 +213,11 @@ mod password_reset_tests {
 
         for _ in 0..1000 {
             let token = PasswordResetToken::generate_secure_token();
-            assert!(!tokens.contains(&token), "Duplicate token generated: {}", token);
+            assert!(
+                !tokens.contains(&token),
+                "Duplicate token generated: {}",
+                token
+            );
             tokens.insert(token);
         }
 
@@ -235,7 +244,8 @@ mod password_reset_tests {
         use chronos::app::models::auth::ForgotPasswordResponse;
 
         let response = ForgotPasswordResponse {
-            message: "If your email is registered, you will receive a password reset link shortly.".to_string(),
+            message: "If your email is registered, you will receive a password reset link shortly."
+                .to_string(),
         };
 
         // Test serialization
@@ -265,7 +275,8 @@ mod password_reset_tests {
             Some("Test User".to_string()),
             "test@example.com".to_string(),
             password,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Test password verification
         assert!(user.verify_password(password).unwrap());

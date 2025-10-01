@@ -8,15 +8,14 @@ mod auth_tests {
 
     #[test]
     fn test_password_validation_valid() {
-        let valid_passwords = vec![
-            "MySecure1!",
-            "Password123!@#",
-            "Complex1$",
-            "Str0ng!Pass",
-        ];
+        let valid_passwords = vec!["MySecure1!", "Password123!@#", "Complex1$", "Str0ng!Pass"];
 
         for password in valid_passwords {
-            assert!(validate_password(password).is_ok(), "Password '{}' should be valid", password);
+            assert!(
+                validate_password(password).is_ok(),
+                "Password '{}' should be valid",
+                password
+            );
         }
     }
 
@@ -32,7 +31,12 @@ mod auth_tests {
         ];
 
         for (password, reason) in invalid_passwords {
-            assert!(validate_password(password).is_err(), "Password '{}' should be invalid ({})", password, reason);
+            assert!(
+                validate_password(password).is_err(),
+                "Password '{}' should be invalid ({})",
+                password,
+                reason
+            );
         }
     }
 
@@ -94,7 +98,8 @@ mod auth_tests {
             Some("John Doe".to_string()),
             "john.doe@example.com".to_string(),
             password,
-        ).unwrap();
+        )
+        .unwrap();
 
         // Password should be hashed
         assert_ne!(user.password_hash, password);
@@ -112,7 +117,8 @@ mod auth_tests {
             Some("John Doe".to_string()),
             "john.doe@example.com".to_string(),
             "SecurePass1!",
-        ).unwrap();
+        )
+        .unwrap();
 
         let response = user.to_response();
 

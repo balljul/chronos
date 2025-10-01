@@ -1,9 +1,14 @@
-use chronos::app::models::auth::{RegisterRequest, RegisterResponse, AuthError, ForgotPasswordRequest, ResetPasswordRequest};
-use chronos::app::models::jwt::{LoginRequest, LoginResponse, RefreshTokenRequest, RefreshTokenResponse, LogoutRequest, LogoutResponse, TokenPair, Claims, TokenType};
+use chronos::app::models::auth::{
+    AuthError, ForgotPasswordRequest, RegisterRequest, RegisterResponse, ResetPasswordRequest,
+};
+use chronos::app::models::jwt::{
+    Claims, LoginRequest, LoginResponse, LogoutRequest, LogoutResponse, RefreshTokenRequest,
+    RefreshTokenResponse, TokenPair, TokenType,
+};
 use chronos::app::models::password_reset::PasswordResetToken;
 use serde_json;
-use validator::Validate;
 use uuid::Uuid;
+use validator::Validate;
 
 #[cfg(test)]
 mod integration_tests {
@@ -241,7 +246,11 @@ mod integration_tests {
             let request = ForgotPasswordRequest {
                 email: invalid_email.to_string(),
             };
-            assert!(request.validate().is_err(), "Email '{}' should be invalid", invalid_email);
+            assert!(
+                request.validate().is_err(),
+                "Email '{}' should be invalid",
+                invalid_email
+            );
         }
     }
 
@@ -390,7 +399,7 @@ mod integration_tests {
             access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test.access".to_string(),
             refresh_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test.refresh".to_string(),
             token_type: "Bearer".to_string(),
-            expires_in: 900, // 15 minutes
+            expires_in: 900,            // 15 minutes
             refresh_expires_in: 604800, // 7 days
         };
 
@@ -431,15 +440,20 @@ mod integration_tests {
         }"#;
 
         let parsed_request: RefreshTokenRequest = serde_json::from_str(request_json).unwrap();
-        assert_eq!(parsed_request.refresh_token, "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test.refresh");
+        assert_eq!(
+            parsed_request.refresh_token,
+            "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.test.refresh"
+        );
     }
 
     #[tokio::test]
     async fn test_refresh_token_response_structure() {
         let response = RefreshTokenResponse {
             access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.new.access".to_string(),
+            refresh_token: Some("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.new.refresh".to_string()),
             token_type: "Bearer".to_string(),
             expires_in: 900,
+            refresh_expires_in: Some(604800),
         };
 
         // Test serialization
@@ -605,8 +619,10 @@ mod integration_tests {
 
         let refresh_response = RefreshTokenResponse {
             access_token: "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.new_access".to_string(),
+            refresh_token: Some("eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.new_refresh".to_string()),
             token_type: "Bearer".to_string(),
             expires_in: 900,
+            refresh_expires_in: Some(604800),
         };
 
         // Step 6: Logout

@@ -1,15 +1,16 @@
-use axum::{
-    routing::get,
-    Router, Json, extract::{State, Path},
-    http::StatusCode,
-};
-use uuid::Uuid;
-use serde::{Serialize};
-use crate::app::services::user_service::UserService;
-use crate::app::repositories::user_repository::UserRepository;
 use crate::app::models::user::User;
+use crate::app::repositories::user_repository::UserRepository;
+use crate::app::services::user_service::UserService;
+use axum::{
+    Json, Router,
+    extract::{Path, State},
+    http::StatusCode,
+    routing::get,
+};
+use serde::Serialize;
 use sqlx::PgPool;
 use std::sync::Arc;
+use uuid::Uuid;
 
 #[derive(Clone)]
 pub struct AppState {
@@ -23,7 +24,6 @@ impl AppState {
         Self { user_service }
     }
 }
-
 
 #[derive(Serialize)]
 struct ErrorResponse {
@@ -44,7 +44,9 @@ async fn list_users(
         Ok(users) => Ok(Json(users)),
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: e.to_string() }),
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
         )),
     }
 }
@@ -57,11 +59,15 @@ async fn get_user(
         Ok(Some(user)) => Ok(Json(user)),
         Ok(None) => Err((
             StatusCode::NOT_FOUND,
-            Json(ErrorResponse { error: "User not found".to_string() }),
+            Json(ErrorResponse {
+                error: "User not found".to_string(),
+            }),
         )),
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: e.to_string() }),
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
         )),
     }
 }
@@ -74,13 +80,15 @@ async fn get_user_by_email(
         Ok(Some(user)) => Ok(Json(user)),
         Ok(None) => Err((
             StatusCode::NOT_FOUND,
-            Json(ErrorResponse { error: "User not found".to_string() }),
+            Json(ErrorResponse {
+                error: "User not found".to_string(),
+            }),
         )),
         Err(e) => Err((
             StatusCode::INTERNAL_SERVER_ERROR,
-            Json(ErrorResponse { error: e.to_string() }),
+            Json(ErrorResponse {
+                error: e.to_string(),
+            }),
         )),
     }
 }
-
-

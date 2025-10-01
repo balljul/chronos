@@ -1,8 +1,9 @@
-use sqlx::{PgPool, Result as SqlxResult};
-use uuid::Uuid;
-use time::OffsetDateTime;
 use crate::app::models::password_reset::PasswordResetToken;
+use sqlx::{PgPool, Result as SqlxResult};
+use time::OffsetDateTime;
+use uuid::Uuid;
 
+#[derive(Clone)]
 pub struct PasswordResetRepository {
     pool: PgPool,
 }
@@ -64,7 +65,10 @@ impl PasswordResetRepository {
         }))
     }
 
-    pub async fn find_valid_tokens_by_user_id(&self, user_id: Uuid) -> SqlxResult<Vec<PasswordResetToken>> {
+    pub async fn find_valid_tokens_by_user_id(
+        &self,
+        user_id: Uuid,
+    ) -> SqlxResult<Vec<PasswordResetToken>> {
         let rows = sqlx::query!(
             r#"
             SELECT id, user_id, token_hash, expires_at, used, created_at
@@ -78,14 +82,17 @@ impl PasswordResetRepository {
         .fetch_all(&self.pool)
         .await?;
 
-        Ok(rows.into_iter().map(|r| PasswordResetToken {
-            id: r.id,
-            user_id: r.user_id,
-            token_hash: r.token_hash,
-            expires_at: r.expires_at,
-            used: r.used.unwrap_or(false),
-            created_at: r.created_at.unwrap_or_else(|| OffsetDateTime::now_utc()),
-        }).collect())
+        Ok(rows
+            .into_iter()
+            .map(|r| PasswordResetToken {
+                id: r.id,
+                user_id: r.user_id,
+                token_hash: r.token_hash,
+                expires_at: r.expires_at,
+                used: r.used.unwrap_or(false),
+                created_at: r.created_at.unwrap_or_else(|| OffsetDateTime::now_utc()),
+            })
+            .collect())
     }
 
     pub async fn mark_as_used(&self, id: Uuid) -> SqlxResult<bool> {
@@ -99,7 +106,11 @@ impl PasswordResetRepository {
         Ok(result.rows_affected() > 0)
     }
 
-    pub async fn count_recent_requests(&self, user_id: Uuid, since: OffsetDateTime) -> SqlxResult<i64> {
+    pub async fn count_recent_requests(
+        &self,
+        user_id: Uuid,
+        since: OffsetDateTime,
+    ) -> SqlxResult<i64> {
         let count = sqlx::query_scalar!(
             "SELECT COUNT(*) FROM password_reset_tokens WHERE user_id = $1 AND created_at > $2",
             user_id,

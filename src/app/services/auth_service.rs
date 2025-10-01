@@ -1,12 +1,16 @@
-use validator::Validate;
-use crate::app::models::user::User;
-use crate::app::models::auth::{RegisterRequest, RegisterResponse, AuthError, ForgotPasswordRequest, ForgotPasswordResponse, ResetPasswordRequest, ResetPasswordResponse};
+use crate::app::models::auth::{
+    AuthError, ForgotPasswordRequest, ForgotPasswordResponse, RegisterRequest, RegisterResponse,
+    ResetPasswordRequest, ResetPasswordResponse,
+};
 use crate::app::models::password_reset::PasswordResetToken;
-use crate::app::repositories::user_repository::UserRepository;
+use crate::app::models::user::User;
 use crate::app::repositories::password_reset_repository::PasswordResetRepository;
+use crate::app::repositories::user_repository::UserRepository;
 use crate::app::services::email_service::MockEmailService;
 use time::OffsetDateTime;
+use validator::Validate;
 
+#[derive(Clone)]
 pub struct AuthService {
     user_repository: UserRepository,
     password_reset_repository: PasswordResetRepository,
@@ -14,7 +18,11 @@ pub struct AuthService {
 }
 
 impl AuthService {
-    pub fn new(user_repository: UserRepository, password_reset_repository: PasswordResetRepository, email_service: MockEmailService) -> Self {
+    pub fn new(
+        user_repository: UserRepository,
+        password_reset_repository: PasswordResetRepository,
+        email_service: MockEmailService,
+    ) -> Self {
         Self {
             user_repository,
             password_reset_repository,
@@ -55,15 +63,15 @@ impl AuthService {
 
         // Save user to database
         match self.user_repository.create(&user).await {
-            Ok(created_user) => {
-                Ok(RegisterResponse {
-                    message: "User registered successfully".to_string(),
-                    user: created_user.to_response(),
-                })
-            }
+            Ok(created_user) => Ok(RegisterResponse {
+                message: "User registered successfully".to_string(),
+                user: created_user.to_response(),
+            }),
             Err(e) => {
                 // Check if it's a unique constraint violation (email already exists)
-                if e.to_string().contains("duplicate key") || e.to_string().contains("UNIQUE constraint") {
+                if e.to_string().contains("duplicate key")
+                    || e.to_string().contains("UNIQUE constraint")
+                {
                     Err(AuthError::new("Email already registered"))
                 } else {
                     Err(AuthError::new(&format!("Failed to create user: {}", e)))
@@ -72,7 +80,10 @@ impl AuthService {
         }
     }
 
-    pub async fn forgot_password(&self, request: ForgotPasswordRequest) -> Result<ForgotPasswordResponse, AuthError> {
+    pub async fn forgot_password(
+        &self,
+        request: ForgotPasswordRequest,
+    ) -> Result<ForgotPasswordResponse, AuthError> {
         // Validate request
         if let Err(validation_errors) = request.validate() {
             return Err(AuthError::validation_error(&validation_errors));
@@ -89,9 +100,15 @@ impl AuthService {
         if let Some(user) = user {
             // Check rate limiting - max 3 requests per hour
             let one_hour_ago = OffsetDateTime::now_utc() - time::Duration::hours(1);
-            match self.password_reset_repository.count_recent_requests(user.id, one_hour_ago).await {
+            match self
+                .password_reset_repository
+                .count_recent_requests(user.id, one_hour_ago)
+                .await
+            {
                 Ok(count) if count >= 3 => {
-                    return Err(AuthError::new("Too many password reset requests. Please try again later."));
+                    return Err(AuthError::new(
+                        "Too many password reset requests. Please try again later.",
+                    ));
                 }
                 Ok(_) => {
                     // Rate limit not exceeded, continue
@@ -114,23 +131,34 @@ impl AuthService {
             match self.password_reset_repository.create(&reset_token).await {
                 Ok(_) => {
                     // Send email with token
-                    if let Err(e) = self.email_service.send_password_reset_email(&request.email, &plain_token).await {
+                    if let Err(e) = self
+                        .email_service
+                        .send_password_reset_email(&request.email, &plain_token)
+                        .await
+                    {
                         return Err(AuthError::new(&format!("Email sending failed: {}", e)));
                     }
                 }
                 Err(e) => {
-                    return Err(AuthError::new(&format!("Failed to create reset token: {}", e)));
+                    return Err(AuthError::new(&format!(
+                        "Failed to create reset token: {}",
+                        e
+                    )));
                 }
             }
         }
 
         // Always return success message regardless of whether email exists (security best practice)
         Ok(ForgotPasswordResponse {
-            message: "If your email is registered, you will receive a password reset link shortly.".to_string(),
+            message: "If your email is registered, you will receive a password reset link shortly."
+                .to_string(),
         })
     }
 
-    pub async fn reset_password(&self, request: ResetPasswordRequest) -> Result<ResetPasswordResponse, AuthError> {
+    pub async fn reset_password(
+        &self,
+        request: ResetPasswordRequest,
+    ) -> Result<ResetPasswordResponse, AuthError> {
         // Validate request
         if let Err(validation_errors) = request.validate() {
             return Err(AuthError::validation_error(&validation_errors));
@@ -172,7 +200,11 @@ impl AuthService {
         };
 
         for user in users {
-            if let Ok(tokens) = self.password_reset_repository.find_valid_tokens_by_user_id(user.id).await {
+            if let Ok(tokens) = self
+                .password_reset_repository
+                .find_valid_tokens_by_user_id(user.id)
+                .await
+            {
                 for token in tokens {
                     if token.is_valid() {
                         if let Ok(true) = token.verify_token(&request.token) {
@@ -197,7 +229,10 @@ impl AuthService {
 
         // Mark token as used
         if let Err(e) = self.password_reset_repository.mark_as_used(token.id).await {
-            return Err(AuthError::new(&format!("Failed to invalidate token: {}", e)));
+            return Err(AuthError::new(&format!(
+                "Failed to invalidate token: {}",
+                e
+            )));
         }
 
         // Update user password
@@ -208,18 +243,16 @@ impl AuthService {
             }
         };
 
-        match self.user_repository.update(uid, None, None, Some(&new_password_hash)).await {
-            Ok(Some(_)) => {
-                Ok(ResetPasswordResponse {
-                    message: "Password reset successfully".to_string(),
-                })
-            }
-            Ok(None) => {
-                Err(AuthError::new("User not found"))
-            }
-            Err(e) => {
-                Err(AuthError::new(&format!("Failed to update password: {}", e)))
-            }
+        match self
+            .user_repository
+            .update(uid, None, None, Some(&new_password_hash))
+            .await
+        {
+            Ok(Some(_)) => Ok(ResetPasswordResponse {
+                message: "Password reset successfully".to_string(),
+            }),
+            Ok(None) => Err(AuthError::new("User not found")),
+            Err(e) => Err(AuthError::new(&format!("Failed to update password: {}", e))),
         }
     }
 }

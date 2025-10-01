@@ -1,6 +1,6 @@
-use uuid::Uuid;
 use crate::app::models::user::User;
 use crate::app::repositories::user_repository::UserRepository;
+use uuid::Uuid;
 
 #[derive(Debug)]
 pub enum UserServiceError {
@@ -40,18 +40,29 @@ impl UserService {
         Self { repository }
     }
 
-    pub async fn create_user(&self, name: Option<String>, email: String, password: &str) -> Result<User, UserServiceError> {
+    pub async fn create_user(
+        &self,
+        name: Option<String>,
+        email: String,
+        password: &str,
+    ) -> Result<User, UserServiceError> {
         let user = User::new(name, email, password)?;
         let created_user = self.repository.create(&user).await?;
         Ok(created_user)
     }
 
-    pub async fn get_user_by_id(&self, id: Uuid) -> Result<Option<User>, Box<dyn std::error::Error>> {
+    pub async fn get_user_by_id(
+        &self,
+        id: Uuid,
+    ) -> Result<Option<User>, Box<dyn std::error::Error>> {
         let user = self.repository.find_by_id(id).await?;
         Ok(user)
     }
 
-    pub async fn get_user_by_email(&self, email: &str) -> Result<Option<User>, Box<dyn std::error::Error>> {
+    pub async fn get_user_by_email(
+        &self,
+        email: &str,
+    ) -> Result<Option<User>, Box<dyn std::error::Error>> {
         let user = self.repository.find_by_email(email).await?;
         Ok(user)
     }
@@ -61,7 +72,13 @@ impl UserService {
         Ok(users)
     }
 
-    pub async fn update_user(&self, id: Uuid, name: Option<String>, email: Option<String>, password: Option<String>) -> Result<Option<User>, UserServiceError> {
+    pub async fn update_user(
+        &self,
+        id: Uuid,
+        name: Option<String>,
+        email: Option<String>,
+        password: Option<String>,
+    ) -> Result<Option<User>, UserServiceError> {
         let name_ref = name.as_deref();
         let email_ref = email.as_deref();
         let password_hash = if let Some(password) = password {
@@ -71,7 +88,10 @@ impl UserService {
         };
         let password_hash_ref = password_hash.as_deref();
 
-        let user = self.repository.update(id, name_ref, email_ref, password_hash_ref).await?;
+        let user = self
+            .repository
+            .update(id, name_ref, email_ref, password_hash_ref)
+            .await?;
         Ok(user)
     }
 

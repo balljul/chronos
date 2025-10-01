@@ -1,8 +1,9 @@
-use sqlx::{PgPool, Result as SqlxResult};
-use uuid::Uuid;
-use time::OffsetDateTime;
 use crate::app::models::user::User;
+use sqlx::{PgPool, Result as SqlxResult};
+use time::OffsetDateTime;
+use uuid::Uuid;
 
+#[derive(Clone)]
 pub struct UserRepository {
     pool: PgPool,
 }
@@ -80,7 +81,13 @@ impl UserRepository {
         Ok(users)
     }
 
-    pub async fn update(&self, id: Uuid, name: Option<&str>, email: Option<&str>, password_hash: Option<&str>) -> SqlxResult<Option<User>> {
+    pub async fn update(
+        &self,
+        id: Uuid,
+        name: Option<&str>,
+        email: Option<&str>,
+        password_hash: Option<&str>,
+    ) -> SqlxResult<Option<User>> {
         let user = sqlx::query_as!(
             User,
             r#"
@@ -106,12 +113,9 @@ impl UserRepository {
     }
 
     pub async fn delete(&self, id: Uuid) -> SqlxResult<bool> {
-        let result = sqlx::query!(
-            "DELETE FROM users WHERE id = $1",
-            id
-        )
-        .execute(&self.pool)
-        .await?;
+        let result = sqlx::query!("DELETE FROM users WHERE id = $1", id)
+            .execute(&self.pool)
+            .await?;
 
         Ok(result.rows_affected() > 0)
     }

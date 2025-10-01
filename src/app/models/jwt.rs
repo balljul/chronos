@@ -1,15 +1,15 @@
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
 use time::OffsetDateTime;
+use uuid::Uuid;
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
-    pub sub: String,      // Subject (user_id)
-    pub email: String,    // User email
-    pub roles: Vec<String>, // User roles (future extensibility)
-    pub exp: usize,       // Expiration time (as UTC timestamp)
-    pub iat: usize,       // Issued at (as UTC timestamp)
-    pub jti: String,      // JWT ID (unique identifier for this token)
+    pub sub: String,           // Subject (user_id)
+    pub email: String,         // User email
+    pub roles: Vec<String>,    // User roles (future extensibility)
+    pub exp: usize,            // Expiration time (as UTC timestamp)
+    pub iat: usize,            // Issued at (as UTC timestamp)
+    pub jti: String,           // JWT ID (unique identifier for this token)
     pub token_type: TokenType, // Access or Refresh token
 }
 
@@ -23,8 +23,8 @@ pub enum TokenType {
 pub struct TokenPair {
     pub access_token: String,
     pub refresh_token: String,
-    pub token_type: String,      // "Bearer"
-    pub expires_in: usize,       // Access token expiry in seconds
+    pub token_type: String,        // "Bearer"
+    pub expires_in: usize,         // Access token expiry in seconds
     pub refresh_expires_in: usize, // Refresh token expiry in seconds
 }
 
@@ -49,33 +49,42 @@ pub struct RefreshTokenRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RefreshTokenResponse {
     pub access_token: String,
+    pub refresh_token: Option<String>,
     pub token_type: String,
     pub expires_in: usize,
+    pub refresh_expires_in: Option<usize>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LogoutRequest {
     pub refresh_token: Option<String>,
+    pub logout_all_devices: Option<bool>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct LogoutResponse {
     pub message: String,
+    pub logged_out_devices: Option<u32>,
 }
 
 // Token blacklist model for database storage
 #[derive(Debug, Clone)]
 pub struct BlacklistedToken {
     pub id: Uuid,
-    pub jti: String,              // JWT ID of the blacklisted token
-    pub user_id: Uuid,            // User who owned the token
-    pub token_type: TokenType,    // Access or Refresh token
-    pub expires_at: OffsetDateTime, // When the original token would have expired
+    pub jti: String,                    // JWT ID of the blacklisted token
+    pub user_id: Uuid,                  // User who owned the token
+    pub token_type: TokenType,          // Access or Refresh token
+    pub expires_at: OffsetDateTime,     // When the original token would have expired
     pub blacklisted_at: OffsetDateTime, // When it was blacklisted
 }
 
 impl BlacklistedToken {
-    pub fn new(jti: String, user_id: Uuid, token_type: TokenType, expires_at: OffsetDateTime) -> Self {
+    pub fn new(
+        jti: String,
+        user_id: Uuid,
+        token_type: TokenType,
+        expires_at: OffsetDateTime,
+    ) -> Self {
         Self {
             id: Uuid::new_v4(),
             jti,
