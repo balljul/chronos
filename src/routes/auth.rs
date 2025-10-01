@@ -4,13 +4,20 @@ use crate::app::middleware::security::{
     check_registration_rate_limit, log_security_event,
 };
 use crate::app::models::auth::{
-    AuthError, ChangePasswordRequest, ChangePasswordResponse, ForgotPasswordRequest,
+    ChangePasswordRequest, ChangePasswordResponse, ForgotPasswordRequest,
     ForgotPasswordResponse, ProfileResponse, ProfileUpdateRequest, RegisterRequest,
-    RegisterResponse, ResetPasswordRequest, ResetPasswordResponse,
+    RegisterResponse, ResetPasswordRequest, ResetPasswordResponse, LegacyAuthError,
 };
+// Make AuthError an alias for LegacyAuthError for backward compatibility
+type AuthError = LegacyAuthError;
 use crate::app::models::jwt::{
     JwtError, LoginRequest, LoginResponse, LogoutRequest, LogoutResponse, RefreshTokenRequest,
     RefreshTokenResponse,
+};
+use crate::app::security::{
+    log_security_event as enhanced_log_security_event,
+    log_validation_failure,
+    log_rate_limit_exceeded,
 };
 use crate::app::services::auth_service::AuthService;
 use crate::app::services::jwt_service::JwtService;
@@ -100,33 +107,46 @@ async fn register(
     State(state): State<AuthAppState>,
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
-    Json(request): Json<RegisterRequest>,
-) -> Result<(StatusCode, Json<RegisterResponse>), (StatusCode, Json<AuthError>)> {
+    Json(mut request): Json<RegisterRequest>,
+) -> Result<(StatusCode, Json<RegisterResponse>), (StatusCode, Json<LegacyAuthError>)> {
     let ip_address = extract_real_ip(addr, &headers);
     let user_agent = headers.get("user-agent").and_then(|h| h.to_str().ok());
 
-    // Check rate limiting for registration attempts
-    if let Err(response) = check_registration_rate_limit(&state.security_state, &ip_address) {
-        log_security_event(
-            "registration_rate_limit_exceeded",
+    // Sanitize input data
+    request.sanitize();
+
+    // Validate request data
+    if let Err(validation_errors) = request.validate() {
+        let error_details = format!("{:?}", validation_errors);
+        log_validation_failure(
             &ip_address,
             user_agent,
+            "/register",
+            &error_details,
+        );
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(AuthError::validation_error(&validation_errors)),
+        ));
+    }
+
+    // Check rate limiting for registration attempts
+    if let Err(_) = check_registration_rate_limit(&state.security_state, &ip_address) {
+        log_rate_limit_exceeded(
+            &ip_address,
+            user_agent,
+            "/register",
             None,
-            Some(&request.email),
-            false,
-            Some("Rate limit exceeded"),
         );
         return Err((
             StatusCode::TOO_MANY_REQUESTS,
-            Json(AuthError::new(
-                "Too many registration attempts. Please try again later.",
-            )),
+            Json(AuthError::new("Too many registration attempts. Please try again later.")),
         ));
     }
 
     match state.auth_service.register(request.clone()).await {
         Ok(response) => {
-            log_security_event(
+            enhanced_log_security_event(
                 "user_registration",
                 &ip_address,
                 user_agent,
@@ -138,22 +158,29 @@ async fn register(
             Ok((StatusCode::CREATED, Json(response)))
         }
         Err(error) => {
-            log_security_event(
+            enhanced_log_security_event(
                 "user_registration_failed",
                 &ip_address,
                 user_agent,
                 None,
                 Some(&request.email),
                 false,
-                Some(&error.error),
+                Some(&error.user_message()),
             );
-            let status_code = match error.error.as_str() {
-                "Email already registered" => StatusCode::CONFLICT,
-                "Validation failed" => StatusCode::BAD_REQUEST,
-                _ if error.error.contains("validation") => StatusCode::BAD_REQUEST,
-                _ => StatusCode::INTERNAL_SERVER_ERROR,
-            };
-            Err((status_code, Json(error)))
+
+            // Map legacy errors to new error types
+            let error_msg = error.user_message();
+            match error_msg.as_str() {
+                msg if msg.contains("already registered") => {
+                    Err((StatusCode::CONFLICT, Json(AuthError::new("Email already registered"))))
+                }
+                msg if msg.contains("validation") => {
+                    Err((StatusCode::BAD_REQUEST, Json(AuthError::new(&error_msg))))
+                }
+                _ => {
+                    Err((StatusCode::INTERNAL_SERVER_ERROR, Json(AuthError::new(&error_msg))))
+                }
+            }
         }
     }
 }
@@ -207,17 +234,18 @@ async fn forgot_password(
                 None,
                 Some(&request.email),
                 false,
-                Some(&error.error),
+                Some(&error.user_message()),
             );
-            let status_code = match error.error.as_str() {
-                "Too many password reset requests. Please try again later." => {
+            let error_msg = error.user_message();
+            let status_code = match error_msg.as_str() {
+                msg if msg.contains("Too many password reset requests") => {
                     StatusCode::TOO_MANY_REQUESTS
                 }
-                "Validation failed" => StatusCode::BAD_REQUEST,
-                _ if error.error.contains("validation") => StatusCode::BAD_REQUEST,
+                msg if msg.contains("Validation failed") => StatusCode::BAD_REQUEST,
+                msg if msg.contains("validation") => StatusCode::BAD_REQUEST,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
-            Err((status_code, Json(error)))
+            Err((status_code, Json(AuthError::new(&error_msg))))
         }
     }
 }
@@ -229,13 +257,14 @@ async fn reset_password(
     match state.auth_service.reset_password(request).await {
         Ok(response) => Ok((StatusCode::OK, Json(response))),
         Err(error) => {
-            let status_code = match error.error.as_str() {
-                "Invalid or expired reset token" => StatusCode::BAD_REQUEST,
-                "Validation failed" => StatusCode::BAD_REQUEST,
-                _ if error.error.contains("validation") => StatusCode::BAD_REQUEST,
+            let error_msg = error.user_message();
+            let status_code = match error_msg.as_str() {
+                msg if msg.contains("Invalid or expired reset token") => StatusCode::BAD_REQUEST,
+                msg if msg.contains("Validation failed") => StatusCode::BAD_REQUEST,
+                msg if msg.contains("validation") => StatusCode::BAD_REQUEST,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
-            Err((status_code, Json(error)))
+            Err((status_code, Json(AuthError::new(&error_msg))))
         }
     }
 }
@@ -245,7 +274,7 @@ async fn login(
     ConnectInfo(addr): ConnectInfo<SocketAddr>,
     headers: HeaderMap,
     Json(request): Json<LoginRequest>,
-) -> Result<(StatusCode, Json<LoginResponse>), (StatusCode, Json<AuthError>)> {
+) -> Result<(StatusCode, Json<LoginResponse>), (StatusCode, Json<LegacyAuthError>)> {
     // Extract IP address
     let ip_address = addr.ip().to_string();
 
@@ -263,18 +292,18 @@ async fn login(
     {
         Ok(response) => Ok((StatusCode::OK, Json(response))),
         Err(error) => {
-            let status_code = match error.error.as_str() {
-                "Too many failed login attempts. Please try again later." => {
+            let error_msg = error.user_message();
+            let status_code = match error_msg.as_str() {
+                msg if msg.contains("Too many failed login attempts") => {
                     StatusCode::TOO_MANY_REQUESTS
                 }
                 msg if msg.contains("Account is temporarily locked") => StatusCode::LOCKED,
-                msg if msg.contains("Account has been temporarily locked") => StatusCode::LOCKED,
-                "Invalid email or password" => StatusCode::UNAUTHORIZED,
-                "Authentication failed" => StatusCode::UNAUTHORIZED,
-                _ if error.error.contains("Database error") => StatusCode::INTERNAL_SERVER_ERROR,
+                msg if msg.contains("Invalid email or password") => StatusCode::UNAUTHORIZED,
+                msg if msg.contains("Authentication failed") => StatusCode::UNAUTHORIZED,
+                msg if msg.contains("Database error") => StatusCode::INTERNAL_SERVER_ERROR,
                 _ => StatusCode::INTERNAL_SERVER_ERROR,
             };
-            Err((status_code, Json(error)))
+            Err((status_code, Json(AuthError::new(&error_msg))))
         }
     }
 }

@@ -1,6 +1,8 @@
+use crate::app::validation::{validate_enhanced_email, validate_token_format, sanitize_html_input};
 use serde::{Deserialize, Serialize};
 use time::OffsetDateTime;
 use uuid::Uuid;
+use validator::{Validate, ValidationError};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Claims {
@@ -28,10 +30,18 @@ pub struct TokenPair {
     pub refresh_expires_in: usize, // Refresh token expiry in seconds
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct LoginRequest {
+    #[validate(custom(function = "validate_enhanced_email", message = "Please provide a valid email address"))]
     pub email: String,
+    #[validate(length(min = 1, message = "Password is required"))]
     pub password: String,
+}
+
+impl LoginRequest {
+    pub fn sanitize(&mut self) {
+        self.email = sanitize_html_input(&self.email).trim().to_lowercase();
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -41,9 +51,16 @@ pub struct LoginResponse {
     pub tokens: TokenPair,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct RefreshTokenRequest {
+    #[validate(custom(function = "validate_token_format", message = "Invalid token format"))]
     pub refresh_token: String,
+}
+
+impl RefreshTokenRequest {
+    pub fn sanitize(&mut self) {
+        self.refresh_token = sanitize_html_input(&self.refresh_token).trim().to_string();
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -55,10 +72,19 @@ pub struct RefreshTokenResponse {
     pub refresh_expires_in: Option<usize>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Validate)]
 pub struct LogoutRequest {
     pub refresh_token: Option<String>,
     pub logout_all_devices: Option<bool>,
+}
+
+impl LogoutRequest {
+    pub fn sanitize(&mut self) {
+        if let Some(token) = &self.refresh_token {
+            let sanitized = sanitize_html_input(token).trim().to_string();
+            self.refresh_token = if sanitized.is_empty() { None } else { Some(sanitized) };
+        }
+    }
 }
 
 #[derive(Debug, Serialize, Deserialize)]
