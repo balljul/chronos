@@ -8,6 +8,7 @@ use crate::app::services::auth_service::AuthService;
 use crate::app::services::email_service::MockEmailService;
 use crate::app::services::jwt_service::{JwtService, get_jwt_secret};
 use crate::app::services::secure_login_service::SecureLoginService;
+use crate::app::middleware::security::SecurityState;
 
 pub mod users;
 pub mod auth;
@@ -39,7 +40,10 @@ pub fn create_router(pool: PgPool) -> Router {
         account_lockout_repository,
     );
 
-    let auth_state = auth::AuthAppState::new(auth_service, jwt_service, secure_login_service);
+    // Create security state for rate limiting
+    let security_state = SecurityState::new();
+
+    let auth_state = auth::AuthAppState::new(auth_service, jwt_service, secure_login_service, security_state);
 
     Router::new()
         .nest("/api/users", users::routes().with_state(users_state))

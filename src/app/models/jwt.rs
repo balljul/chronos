@@ -49,8 +49,10 @@ pub struct RefreshTokenRequest {
 #[derive(Debug, Serialize, Deserialize)]
 pub struct RefreshTokenResponse {
     pub access_token: String,
+    pub refresh_token: Option<String>,
     pub token_type: String,
     pub expires_in: usize,
+    pub refresh_expires_in: Option<usize>,
 }
 
 #[derive(Debug, Serialize, Deserialize)]

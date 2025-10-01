@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use validator::{Validate, ValidationError};
 use regex::Regex;
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct RegisterRequest {
     pub name: Option<String>,
     #[validate(email(message = "Invalid email format"))]
@@ -96,7 +96,7 @@ mod tests {
     }
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct ForgotPasswordRequest {
     #[validate(email(message = "Invalid email format"))]
     pub email: String,

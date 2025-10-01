@@ -141,6 +141,54 @@ impl JwtService {
             .map_err(|e| JwtError::TokenCreationError(e.to_string()))
     }
 
+    // Refresh with token rotation for enhanced security
+    pub async fn refresh_with_rotation(&self, refresh_token: &str, user_id: Uuid) -> Result<TokenPair, JwtError> {
+        let claims = self.validate_token(refresh_token).await?;
+
+        // Verify it's a refresh token
+        match claims.token_type {
+            TokenType::Refresh => {},
+            TokenType::Access => return Err(JwtError::InvalidToken("Access token provided, refresh token required".to_string())),
+        }
+
+        // Validate refresh token against database storage
+        let stored_token = self.refresh_token_repository
+            .find_by_jti(&claims.jti)
+            .await
+            .map_err(|e| JwtError::InvalidToken(format!("Database error: {}", e)))?;
+
+        let stored_token = stored_token.ok_or(JwtError::InvalidToken("Refresh token not found".to_string()))?;
+
+        if !stored_token.is_valid() {
+            return Err(JwtError::InvalidToken("Refresh token is revoked or expired".to_string()));
+        }
+
+        // Verify the token hash matches
+        let token_hash = self.hash_token(refresh_token)?;
+        if stored_token.token_hash != token_hash {
+            return Err(JwtError::InvalidToken("Refresh token hash mismatch".to_string()));
+        }
+
+        // Revoke the old refresh token
+        self.refresh_token_repository
+            .revoke_token(&claims.jti)
+            .await
+            .map_err(|e| JwtError::TokenCreationError(format!("Failed to revoke old refresh token: {}", e)))?;
+
+        // Create a mock user object for token generation
+        let user = User {
+            id: user_id,
+            name: None,
+            email: claims.email.clone(),
+            password_hash: String::new(), // Not used in token generation
+            created_at: Some(OffsetDateTime::now_utc()), // Not used in token generation
+            updated_at: Some(OffsetDateTime::now_utc()), // Not used in token generation
+        };
+
+        // Generate new token pair
+        self.generate_token_pair(&user).await
+    }
+
     // Validate a token and return its claims
     pub async fn validate_token(&self, token: &str) -> Result<Claims, JwtError> {
         let mut validation = Validation::new(Algorithm::HS256);
@@ -193,7 +241,7 @@ impl JwtService {
     }
 
     // Decode token without validation (used for blacklisting expired tokens)
-    fn decode_token_without_validation(&self, token: &str) -> Result<Claims, JwtError> {
+    pub fn decode_token_without_validation(&self, token: &str) -> Result<Claims, JwtError> {
         let mut validation = Validation::new(Algorithm::HS256);
         validation.validate_exp = false; // Don't validate expiration
         validation.validate_nbf = false;

@@ -10,25 +10,29 @@ use tower_governor::{
     governor::GovernorConfigBuilder,
     GovernorLayer,
 };
+use uuid::Uuid;
 use crate::app::services::auth_service::AuthService;
 use crate::app::services::jwt_service::JwtService;
 use crate::app::services::secure_login_service::SecureLoginService;
 use crate::app::models::auth::{RegisterRequest, RegisterResponse, AuthError, ForgotPasswordRequest, ForgotPasswordResponse, ResetPasswordRequest, ResetPasswordResponse};
 use crate::app::models::jwt::{LoginRequest, LoginResponse, RefreshTokenRequest, RefreshTokenResponse, LogoutRequest, LogoutResponse, JwtError};
+use crate::app::middleware::security::{SecurityState, check_registration_rate_limit, check_login_rate_limit, check_refresh_rate_limit, check_password_reset_rate_limit, log_security_event};
 
 #[derive(Clone)]
 pub struct AuthAppState {
     pub auth_service: Arc<AuthService>,
     pub jwt_service: Arc<JwtService>,
     pub secure_login_service: Arc<SecureLoginService>,
+    pub security_state: Arc<SecurityState>,
 }
 
 impl AuthAppState {
-    pub fn new(auth_service: AuthService, jwt_service: JwtService, secure_login_service: SecureLoginService) -> Self {
+    pub fn new(auth_service: AuthService, jwt_service: JwtService, secure_login_service: SecureLoginService, security_state: SecurityState) -> Self {
         Self {
             auth_service: Arc::new(auth_service),
             jwt_service: Arc::new(jwt_service),
             secure_login_service: Arc::new(secure_login_service),
+            security_state: Arc::new(security_state),
         }
     }
 }
@@ -65,11 +69,27 @@ pub fn routes() -> Router<AuthAppState> {
 
 async fn register(
     State(state): State<AuthAppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(request): Json<RegisterRequest>,
 ) -> Result<(StatusCode, Json<RegisterResponse>), (StatusCode, Json<AuthError>)> {
-    match state.auth_service.register(request).await {
-        Ok(response) => Ok((StatusCode::CREATED, Json(response))),
+    let ip_address = addr.ip().to_string();
+    let user_agent = headers.get("user-agent")
+        .and_then(|h| h.to_str().ok());
+
+    // Check rate limiting for registration attempts
+    if let Err(response) = check_registration_rate_limit(&state.security_state, &ip_address) {
+        log_security_event("registration_rate_limit_exceeded", &ip_address, user_agent, None, Some(&request.email), false, Some("Rate limit exceeded"));
+        return Err((StatusCode::TOO_MANY_REQUESTS, Json(AuthError::new("Too many registration attempts. Please try again later."))));
+    }
+
+    match state.auth_service.register(request.clone()).await {
+        Ok(response) => {
+            log_security_event("user_registration", &ip_address, user_agent, Some(&response.user.id.to_string()), Some(&request.email), true, None);
+            Ok((StatusCode::CREATED, Json(response)))
+        }
         Err(error) => {
+            log_security_event("user_registration_failed", &ip_address, user_agent, None, Some(&request.email), false, Some(&error.error));
             let status_code = match error.error.as_str() {
                 "Email already registered" => StatusCode::CONFLICT,
                 "Validation failed" => StatusCode::BAD_REQUEST,
@@ -83,11 +103,27 @@ async fn register(
 
 async fn forgot_password(
     State(state): State<AuthAppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(request): Json<ForgotPasswordRequest>,
 ) -> Result<(StatusCode, Json<ForgotPasswordResponse>), (StatusCode, Json<AuthError>)> {
-    match state.auth_service.forgot_password(request).await {
-        Ok(response) => Ok((StatusCode::OK, Json(response))),
+    let ip_address = addr.ip().to_string();
+    let user_agent = headers.get("user-agent")
+        .and_then(|h| h.to_str().ok());
+
+    // Check rate limiting for password reset attempts
+    if let Err(response) = check_password_reset_rate_limit(&state.security_state, &request.email) {
+        log_security_event("password_reset_rate_limit_exceeded", &ip_address, user_agent, None, Some(&request.email), false, Some("Rate limit exceeded"));
+        return Err((StatusCode::TOO_MANY_REQUESTS, Json(AuthError::new("Too many password reset requests. Please try again later."))));
+    }
+
+    match state.auth_service.forgot_password(request.clone()).await {
+        Ok(response) => {
+            log_security_event("password_reset_requested", &ip_address, user_agent, None, Some(&request.email), true, None);
+            Ok((StatusCode::OK, Json(response)))
+        }
         Err(error) => {
+            log_security_event("password_reset_request_failed", &ip_address, user_agent, None, Some(&request.email), false, Some(&error.error));
             let status_code = match error.error.as_str() {
                 "Too many password reset requests. Please try again later." => StatusCode::TOO_MANY_REQUESTS,
                 "Validation failed" => StatusCode::BAD_REQUEST,
@@ -152,18 +188,58 @@ async fn login(
 
 async fn refresh_token(
     State(state): State<AuthAppState>,
+    ConnectInfo(addr): ConnectInfo<SocketAddr>,
+    headers: HeaderMap,
     Json(request): Json<RefreshTokenRequest>,
 ) -> Result<(StatusCode, Json<RefreshTokenResponse>), (StatusCode, String)> {
-    match state.jwt_service.refresh_access_token(&request.refresh_token).await {
-        Ok(new_access_token) => {
+    let ip_address = addr.ip().to_string();
+    let user_agent = headers.get("user-agent")
+        .and_then(|h| h.to_str().ok());
+
+    // First, validate the refresh token to get user info for rate limiting
+    let claims = match state.jwt_service.decode_token_without_validation(&request.refresh_token) {
+        Ok(claims) => claims,
+        Err(error) => {
+            log_security_event("refresh_token_validation_failed", &ip_address, user_agent, None, None, false, Some(&error.to_string()));
+            let status_code = match error {
+                JwtError::ExpiredToken => StatusCode::UNAUTHORIZED,
+                JwtError::InvalidToken(_) => StatusCode::UNAUTHORIZED,
+                JwtError::BlacklistedToken => StatusCode::UNAUTHORIZED,
+                _ => StatusCode::INTERNAL_SERVER_ERROR,
+            };
+            return Err((status_code, error.to_string()));
+        }
+    };
+
+    // Check rate limiting for token refresh attempts
+    if let Err(_) = check_refresh_rate_limit(&state.security_state, &claims.sub) {
+        log_security_event("refresh_rate_limit_exceeded", &ip_address, user_agent, Some(&claims.sub), Some(&claims.email), false, Some("Rate limit exceeded"));
+        return Err((StatusCode::TOO_MANY_REQUESTS, "Too many token refresh attempts. Please wait before retrying.".to_string()));
+    }
+
+    let user_id = match Uuid::parse_str(&claims.sub) {
+        Ok(id) => id,
+        Err(_) => {
+            log_security_event("refresh_token_invalid_user_id", &ip_address, user_agent, Some(&claims.sub), Some(&claims.email), false, Some("Invalid user ID in token"));
+            return Err((StatusCode::UNAUTHORIZED, "Invalid token".to_string()));
+        }
+    };
+
+    // Use token rotation for enhanced security
+    match state.jwt_service.refresh_with_rotation(&request.refresh_token, user_id).await {
+        Ok(tokens) => {
             let response = RefreshTokenResponse {
-                access_token: new_access_token,
+                access_token: tokens.access_token,
+                refresh_token: Some(tokens.refresh_token),
                 token_type: "Bearer".to_string(),
                 expires_in: 15 * 60, // 15 minutes
+                refresh_expires_in: Some(7 * 24 * 60 * 60), // 7 days
             };
+            log_security_event("token_refreshed", &ip_address, user_agent, Some(&claims.sub), Some(&claims.email), true, Some("Token rotated"));
             Ok((StatusCode::OK, Json(response)))
         }
         Err(error) => {
+            log_security_event("token_refresh_failed", &ip_address, user_agent, Some(&claims.sub), Some(&claims.email), false, Some(&error.to_string()));
             let status_code = match error {
                 JwtError::ExpiredToken => StatusCode::UNAUTHORIZED,
                 JwtError::InvalidToken(_) => StatusCode::UNAUTHORIZED,
