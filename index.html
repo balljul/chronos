@@ -1,0 +1,49 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Chronos Authentication System</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div id="app-loading" class="loading-container">
+        <div class="loading-spinner">
+            <div class="spinner"></div>
+        </div>
+        <p>Loading Chronos Authentication System...</p>
+    </div>
+
+    <!-- The main app will be injected here by WebAssembly -->
+    <script type="module">
+        import init, { ChronosAuth } from './pkg/chronos.js';
+
+        async function run() {
+            try {
+                // Initialize the wasm module
+                await init();
+
+                // Hide loading screen
+                document.getElementById('app-loading').style.display = 'none';
+
+                console.log('Chronos WebAssembly frontend loaded successfully');
+            } catch (error) {
+                console.error('Failed to load WebAssembly module:', error);
+                document.getElementById('app-loading').innerHTML = `
+                    <div class="error-container">
+                        <h2>Failed to Load Application</h2>
+                        <p>There was an error loading the Chronos Authentication System.</p>
+                        <p>Error: ${error.message}</p>
+                        <button onclick="location.reload()" class="retry-button">Retry</button>
+                    </div>
+                `;
+            }
+        }
+
+        run();
+
+        // Make ChronosAuth available globally for debugging
+        window.ChronosAuth = ChronosAuth;
+    </script>
+</body>
+</html>
