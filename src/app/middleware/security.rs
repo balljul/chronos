@@ -16,6 +16,7 @@ use tower::{Layer, Service};
 use tower_http::cors::{Any, CorsLayer};
 use tracing::{error, info, warn};
 
+#[derive(Clone)]
 pub struct SecurityState {
     pub ip_rate_limiter: Arc<DashMap<String, IpRateLimit>>,
     pub user_rate_limiter: Arc<DashMap<String, UserRateLimit>>,
