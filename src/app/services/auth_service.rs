@@ -7,6 +7,7 @@ use crate::app::repositories::password_reset_repository::PasswordResetRepository
 use crate::app::services::email_service::MockEmailService;
 use time::OffsetDateTime;
 
+#[derive(Clone)]
 pub struct AuthService {
     user_repository: UserRepository,
     password_reset_repository: PasswordResetRepository,

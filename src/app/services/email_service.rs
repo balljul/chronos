@@ -9,6 +9,7 @@ pub struct EmailMessage {
 }
 
 // Mock email service for testing - stores emails in memory
+#[derive(Clone)]
 pub struct MockEmailService {
     sent_emails: Arc<Mutex<Vec<EmailMessage>>>,
 }
