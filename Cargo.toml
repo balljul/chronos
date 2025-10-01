@@ -19,3 +19,4 @@ argon2 = "0.5.3"
 validator = { version = "0.20", features = ["derive"] }
 regex = "1.11.3"
 tower_governor = "0.8.0"
+rand = "0.8.5"
