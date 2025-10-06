@@ -1,7 +1,9 @@
 use crate::app::middleware::security::{SecurityHeadersLayer, get_cors_layer};
 use crate::routes;
+use axum::extract::connect_info::ConnectInfo;
 use sqlx::PgPool;
 use std::env;
+use std::net::SocketAddr;
 use tokio::net::TcpListener;
 use tower::ServiceBuilder;
 use tower_http::{
@@ -39,9 +41,10 @@ pub async fn build(pool: PgPool) {
             .layer(get_cors_layer()),
     );
 
-    let service = tower::make::Shared::new(app.into_service());
-
     println!("Server running on {}", &url);
 
-    axum::serve(listener, service).await.unwrap();
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<SocketAddr>()
+    ).await.unwrap();
 }
