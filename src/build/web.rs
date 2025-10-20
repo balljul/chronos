@@ -39,9 +39,12 @@ pub async fn build(pool: PgPool) {
             .layer(get_cors_layer()),
     );
 
-    let service = tower::make::Shared::new(app.into_service());
-
     println!("Server running on {}", &url);
 
-    axum::serve(listener, service).await.unwrap();
+    axum::serve(
+        listener,
+        app.into_make_service_with_connect_info::<std::net::SocketAddr>(),
+    )
+    .await
+    .unwrap();
 }
