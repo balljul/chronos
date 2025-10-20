@@ -20,7 +20,6 @@ pub mod users;
 pub fn create_router(pool: PgPool) -> Router {
     let users_state = users::AppState::new(pool.clone());
 
-    // Create repositories
     let user_repository = UserRepository::new(pool.clone());
     let password_reset_repository = PasswordResetRepository::new(pool.clone());
     let token_blacklist_repository = TokenBlacklistRepository::new(pool.clone());
