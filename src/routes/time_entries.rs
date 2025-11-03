@@ -49,10 +49,10 @@ pub fn routes() -> Router<TimeEntriesState> {
         .route("/", get(list_time_entries))
         .route("/start", post(start_timer))
         .route("/current", get(get_current_timer))
-        .route("/:id", get(get_time_entry))
-        .route("/:id", patch(update_time_entry))
-        .route("/:id", delete(delete_time_entry))
-        .route("/:id/stop", patch(stop_timer))
+        .route("/{id}", get(get_time_entry))
+        .route("/{id}", patch(update_time_entry))
+        .route("/{id}", delete(delete_time_entry))
+        .route("/{id}/stop", patch(stop_timer))
 }
 
 async fn create_time_entry(
