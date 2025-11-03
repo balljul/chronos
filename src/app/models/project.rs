@@ -21,7 +21,7 @@ pub struct CreateProjectRequest {
     pub name: String,
     #[validate(length(max = 1000, message = "Description cannot exceed 1000 characters"))]
     pub description: Option<String>,
-    #[validate(regex(path = "crate::app::models::project::COLOR_REGEX", message = "Color must be a valid hex code"))]
+    #[validate(regex(path = "*crate::app::models::project::COLOR_REGEX", message = "Color must be a valid hex code"))]
     pub color: Option<String>,
 }
 
@@ -31,7 +31,7 @@ pub struct UpdateProjectRequest {
     pub name: Option<String>,
     #[validate(length(max = 1000, message = "Description cannot exceed 1000 characters"))]
     pub description: Option<String>,
-    #[validate(regex(path = "crate::app::models::project::COLOR_REGEX", message = "Color must be a valid hex code"))]
+    #[validate(regex(path = "*crate::app::models::project::COLOR_REGEX", message = "Color must be a valid hex code"))]
     pub color: Option<String>,
     pub is_active: Option<bool>,
 }

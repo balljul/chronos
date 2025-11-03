@@ -3,7 +3,7 @@ use time::OffsetDateTime;
 use uuid::Uuid;
 use validator::Validate;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::FromRow)]
 pub struct TimeEntry {
     pub id: Uuid,
     pub user_id: Uuid,
@@ -60,7 +60,7 @@ pub struct TimeEntriesListResponse {
     pub per_page: i64,
 }
 
-#[derive(Debug, Serialize, Deserialize, Validate)]
+#[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct TimeEntryFilters {
     pub start_date: Option<OffsetDateTime>,
     pub end_date: Option<OffsetDateTime>,

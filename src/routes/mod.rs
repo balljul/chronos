@@ -15,10 +15,12 @@ use axum::{Router, middleware};
 use sqlx::PgPool;
 
 pub mod auth;
+pub mod time_entries;
 pub mod users;
 
 pub fn create_router(pool: PgPool) -> Router {
     let users_state = users::AppState::new(pool.clone());
+    let time_entries_state = time_entries::TimeEntriesState::new(pool.clone());
 
     let user_repository = UserRepository::new(pool.clone());
     let password_reset_repository = PasswordResetRepository::new(pool.clone());
@@ -67,6 +69,15 @@ pub fn create_router(pool: PgPool) -> Router {
         auth::protected_routes()
             .with_state(auth_state)
             .layer(middleware::from_fn_with_state(
+                std::sync::Arc::new(jwt_service.clone()),
+                jwt_auth_middleware_with_json_errors,
+            ));
+
+    // Create protected time entries routes with middleware
+    let protected_time_entries_routes =
+        time_entries::routes()
+            .with_state(time_entries_state)
+            .layer(middleware::from_fn_with_state(
                 std::sync::Arc::new(jwt_service),
                 jwt_auth_middleware_with_json_errors,
             ));
@@ -75,4 +86,5 @@ pub fn create_router(pool: PgPool) -> Router {
         .nest("/api/users", users::routes().with_state(users_state))
         .nest("/api/auth", public_auth_routes)
         .nest("/api/auth", protected_auth_routes)
+        .nest("/api/time-entries", protected_time_entries_routes)
 }

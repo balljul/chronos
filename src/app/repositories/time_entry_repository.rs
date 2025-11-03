@@ -1,5 +1,5 @@
 use crate::app::models::time_entry::{TimeEntry, TimeEntryError, TimeEntryFilters};
-use sqlx::{PgPool, Row};
+use sqlx::PgPool;
 use time::OffsetDateTime;
 use uuid::Uuid;
 
