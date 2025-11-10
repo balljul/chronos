@@ -23,7 +23,9 @@ pub struct CreateTimeEntryRequest {
     pub description: Option<String>,
     pub project_id: Option<Uuid>,
     pub task_id: Option<Uuid>,
+    #[serde(with = "time::serde::rfc3339")]
     pub start_time: OffsetDateTime,
+    #[serde(default, with = "time::serde::rfc3339::option")]
     pub end_time: Option<OffsetDateTime>,
 }
 
@@ -33,7 +35,9 @@ pub struct UpdateTimeEntryRequest {
     pub description: Option<String>,
     pub project_id: Option<Uuid>,
     pub task_id: Option<Uuid>,
+    #[serde(with = "time::serde::rfc3339::option")]
     pub start_time: Option<OffsetDateTime>,
+    #[serde(with = "time::serde::rfc3339::option")]
     pub end_time: Option<OffsetDateTime>,
 }
 
@@ -62,8 +66,8 @@ pub struct TimeEntriesListResponse {
 
 #[derive(Debug, Clone, Serialize, Deserialize, Validate)]
 pub struct TimeEntryFilters {
-    pub start_date: Option<OffsetDateTime>,
-    pub end_date: Option<OffsetDateTime>,
+    pub start_date: Option<String>,
+    pub end_date: Option<String>,
     pub project_id: Option<Uuid>,
     pub task_id: Option<Uuid>,
     pub is_running: Option<bool>,

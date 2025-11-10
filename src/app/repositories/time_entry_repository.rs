@@ -216,13 +216,15 @@ impl TimeEntryRepository {
             where_clause
         );
 
-        // Get paginated results
+        // Get paginated results - LIMIT and OFFSET will be the last parameters
+        let limit_param = param_count + 1;
+        let offset_param = param_count + 2;
         let entries_query = format!(
             "SELECT id, user_id, description, project_id, task_id, start_time, end_time, duration, created_at, updated_at FROM time_entries WHERE {} {} LIMIT ${} OFFSET ${}",
             where_clause,
             sort_clause,
-            param_count + 1,
-            param_count + 2
+            limit_param,
+            offset_param
         );
 
         // Build query with parameters
@@ -230,13 +232,17 @@ impl TimeEntryRepository {
         let mut duration_query_builder = sqlx::query_scalar::<_, i32>(&duration_query).bind(user_id);
         let mut entries_query_builder = sqlx::query_as::<_, TimeEntry>(&entries_query).bind(user_id);
 
-        if let Some(start_date) = filters.start_date {
+        if let Some(start_date_str) = &filters.start_date {
+            let start_date = OffsetDateTime::parse(start_date_str, &time::format_description::well_known::Iso8601::DEFAULT)
+                .map_err(|_| TimeEntryError::ValidationError("Invalid start_date format".to_string()))?;
             count_query_builder = count_query_builder.bind(start_date);
             duration_query_builder = duration_query_builder.bind(start_date);
             entries_query_builder = entries_query_builder.bind(start_date);
         }
         
-        if let Some(end_date) = filters.end_date {
+        if let Some(end_date_str) = &filters.end_date {
+            let end_date = OffsetDateTime::parse(end_date_str, &time::format_description::well_known::Iso8601::DEFAULT)
+                .map_err(|_| TimeEntryError::ValidationError("Invalid end_date format".to_string()))?;
             count_query_builder = count_query_builder.bind(end_date);
             duration_query_builder = duration_query_builder.bind(end_date);
             entries_query_builder = entries_query_builder.bind(end_date);
@@ -254,13 +260,12 @@ impl TimeEntryRepository {
             entries_query_builder = entries_query_builder.bind(task_id);
         }
 
-        entries_query_builder = entries_query_builder.bind(limit).bind(offset);
+        entries_query_builder = entries_query_builder.bind(limit as i32).bind(offset as i32);
 
         // Execute queries
         let total_count = count_query_builder.fetch_one(&self.pool).await?;
         let total_duration = duration_query_builder.fetch_one(&self.pool).await?;
         let entries = entries_query_builder.fetch_all(&self.pool).await?;
-
         Ok((entries, total_count, total_duration))
     }
 }

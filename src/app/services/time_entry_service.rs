@@ -147,11 +147,21 @@ impl TimeEntryService {
         }
 
         // Validate date range if both dates are provided
-        if let (Some(start_date), Some(end_date)) = (filters.start_date, filters.end_date) {
-            if end_date <= start_date {
-                return Err(TimeEntryError::ValidationError(
-                    "End date must be after start date".to_string()
-                ));
+        if let (Some(start_date_str), Some(end_date_str)) = (&filters.start_date, &filters.end_date) {
+            match (OffsetDateTime::parse(start_date_str, &time::format_description::well_known::Iso8601::DEFAULT), 
+                   OffsetDateTime::parse(end_date_str, &time::format_description::well_known::Iso8601::DEFAULT)) {
+                (Ok(start_date), Ok(end_date)) => {
+                    if end_date <= start_date {
+                        return Err(TimeEntryError::ValidationError(
+                            "End date must be after start date".to_string()
+                        ));
+                    }
+                }
+                _ => {
+                    return Err(TimeEntryError::ValidationError(
+                        "Invalid date format. Use ISO 8601 format".to_string()
+                    ));
+                }
             }
         }
 
