@@ -34,7 +34,8 @@ export async function GET(request: NextRequest) {
     }
 
     const data = await response.json();
-    return NextResponse.json(data);
+    // Wrap the response in a data object to match client expectations
+    return NextResponse.json({ data });
   } catch (error) {
     console.error("Current timer API error:", error);
     return NextResponse.json(
