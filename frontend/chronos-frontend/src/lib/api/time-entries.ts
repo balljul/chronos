@@ -136,12 +136,25 @@ class TimeEntriesAPI {
    * Stop a running timer
    */
   async stopTimer(id: string): Promise<TimeEntry> {
-    const response = await fetch(`/api/time-entries/${id}/stop`, {
-      method: "PATCH",
-      headers: this.getAuthHeaders(),
-    });
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 10000); // 10 second timeout
 
-    return this.handleResponse<TimeEntry>(response);
+    try {
+      const response = await fetch(`/api/time-entries/${id}/stop`, {
+        method: "PATCH",
+        headers: this.getAuthHeaders(),
+        signal: controller.signal,
+      });
+
+      clearTimeout(timeoutId);
+      return this.handleResponse<TimeEntry>(response);
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error instanceof Error && error.name === 'AbortError') {
+        throw new Error('Request timed out - please try again');
+      }
+      throw error;
+    }
   }
 
   /**
