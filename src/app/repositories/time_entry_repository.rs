@@ -156,8 +156,8 @@ impl TimeEntryRepository {
     }
 
     pub async fn find_with_filters(&self, user_id: Uuid, filters: &TimeEntryFilters) -> Result<(Vec<TimeEntry>, i64, i32), TimeEntryError> {
-        let page = filters.page.unwrap_or(1);
-        let limit = filters.limit.unwrap_or(20);
+        let page = filters.page.unwrap_or(1) as i32;
+        let limit = filters.limit.unwrap_or(20) as i32;
         let offset = (page - 1) * limit;
 
         let mut where_conditions = vec!["user_id = $1".to_string()];
@@ -205,7 +205,7 @@ impl TimeEntryRepository {
         );
         
         let duration_query = format!(
-            "SELECT COALESCE(SUM(duration), 0) FROM time_entries WHERE {} AND duration IS NOT NULL",
+            "SELECT COALESCE(SUM(duration), 0)::INTEGER FROM time_entries WHERE {} AND duration IS NOT NULL",
             where_clause
         );
 
@@ -251,11 +251,17 @@ impl TimeEntryRepository {
             entries_query_builder = entries_query_builder.bind(task_id);
         }
 
-        entries_query_builder = entries_query_builder.bind(limit as i32).bind(offset as i32);
+        entries_query_builder = entries_query_builder.bind(limit).bind(offset);
 
+        println!("About to execute entries query: {}", entries_query);
+        println!("With limit: {}, offset: {}", limit, offset);
+        
         let total_count = count_query_builder.fetch_one(&self.pool).await?;
         let total_duration = duration_query_builder.fetch_one(&self.pool).await?;
-        let entries = entries_query_builder.fetch_all(&self.pool).await?;
+        let entries = entries_query_builder.fetch_all(&self.pool).await.map_err(|e| {
+            eprintln!("Entries query failed: {:?}", e);
+            TimeEntryError::DatabaseError(e)
+        })?;
         Ok((entries, total_count, total_duration))
     }
 }

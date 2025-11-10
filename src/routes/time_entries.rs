@@ -148,7 +148,7 @@ async fn list_time_entries(
         Err(e) => {
             let (status, message) = match e {
                 TimeEntryError::ValidationError(msg) => (StatusCode::BAD_REQUEST, msg),
-                TimeEntryError::DatabaseError(_) => (StatusCode::INTERNAL_SERVER_ERROR, "Database error occurred".to_string()),
+                TimeEntryError::DatabaseError(db_err) => (StatusCode::INTERNAL_SERVER_ERROR, format!("Database error: {}", db_err)),
                 _ => (StatusCode::INTERNAL_SERVER_ERROR, "An unexpected error occurred".to_string()),
             };
             Err((status, Json(ErrorResponse { error: message })))

@@ -9,6 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { formatTimerDuration } from "@/lib/time-utils";
 import { toast } from "sonner";
 import { timeEntriesAPI } from "@/lib/api/time-entries";
+import TimeEntriesTable from "@/components/time-entries-table";
 import type { TimeEntry } from "@/types/time-entries";
 
 interface ProfileData {
@@ -205,7 +206,9 @@ export default function Dashboard() {
     
     if (isRunning && currentEntry) {
       // Debounce the API call
-      clearTimeout(descriptionTimeoutRef.current);
+      if (descriptionTimeoutRef.current) {
+        clearTimeout(descriptionTimeoutRef.current);
+      }
       descriptionTimeoutRef.current = setTimeout(() => {
         updateDescription(newValue);
       }, 1000);
@@ -326,9 +329,9 @@ export default function Dashboard() {
       </header>
 
       {/* Main Content */}
-      <main className="flex-1 flex items-center justify-center px-4 sm:px-6 lg:px-8">
-        <div className="text-center text-gray-600 dark:text-gray-400">
-          <p>Dashboard content goes here</p>
+      <main className="flex-1 px-4 sm:px-6 lg:px-8 py-8">
+        <div className="max-w-7xl mx-auto">
+          <TimeEntriesTable onRefresh={loadCurrentTimer} />
         </div>
       </main>
     </div>
