@@ -14,7 +14,6 @@ impl TimeEntryRepository {
     }
 
     pub async fn create(&self, entry: &TimeEntry) -> Result<TimeEntry, TimeEntryError> {
-        // First check if user already has a running timer (only if this entry is running)
         if entry.end_time.is_none() {
             let running_count: i64 = sqlx::query_scalar(
                 "SELECT COUNT(*) FROM time_entries WHERE user_id = $1 AND end_time IS NULL"
@@ -28,7 +27,6 @@ impl TimeEntryRepository {
             }
         }
 
-        // Validate time range if both start and end times are set
         if let Some(end_time) = entry.end_time {
             if end_time <= entry.start_time {
                 return Err(TimeEntryError::InvalidTimeRange);
@@ -82,7 +80,6 @@ impl TimeEntryRepository {
     }
 
     pub async fn update(&self, id: Uuid, user_id: Uuid, entry: &TimeEntry) -> Result<TimeEntry, TimeEntryError> {
-        // Validate time range if both start and end times are set
         if let Some(end_time) = entry.end_time {
             if end_time <= entry.start_time {
                 return Err(TimeEntryError::InvalidTimeRange);
@@ -163,7 +160,6 @@ impl TimeEntryRepository {
         let limit = filters.limit.unwrap_or(20);
         let offset = (page - 1) * limit;
 
-        // Build the WHERE clause
         let mut where_conditions = vec!["user_id = $1".to_string()];
         let mut param_count = 1;
         
@@ -197,26 +193,22 @@ impl TimeEntryRepository {
 
         let where_clause = where_conditions.join(" AND ");
         
-        // Determine sort order
         let sort_clause = match filters.sort_by.as_deref() {
             Some("duration") => "ORDER BY duration DESC NULLS LAST",
             Some("start_time") => "ORDER BY start_time DESC",
             _ => "ORDER BY start_time DESC",
         };
 
-        // Get total count
         let count_query = format!(
             "SELECT COUNT(*) FROM time_entries WHERE {}",
             where_clause
         );
         
-        // Get total duration
         let duration_query = format!(
             "SELECT COALESCE(SUM(duration), 0) FROM time_entries WHERE {} AND duration IS NOT NULL",
             where_clause
         );
 
-        // Get paginated results - LIMIT and OFFSET will be the last parameters
         let limit_param = param_count + 1;
         let offset_param = param_count + 2;
         let entries_query = format!(
@@ -227,7 +219,6 @@ impl TimeEntryRepository {
             offset_param
         );
 
-        // Build query with parameters
         let mut count_query_builder = sqlx::query_scalar::<_, i64>(&count_query).bind(user_id);
         let mut duration_query_builder = sqlx::query_scalar::<_, i32>(&duration_query).bind(user_id);
         let mut entries_query_builder = sqlx::query_as::<_, TimeEntry>(&entries_query).bind(user_id);
@@ -262,7 +253,6 @@ impl TimeEntryRepository {
 
         entries_query_builder = entries_query_builder.bind(limit as i32).bind(offset as i32);
 
-        // Execute queries
         let total_count = count_query_builder.fetch_one(&self.pool).await?;
         let total_duration = duration_query_builder.fetch_one(&self.pool).await?;
         let entries = entries_query_builder.fetch_all(&self.pool).await?;

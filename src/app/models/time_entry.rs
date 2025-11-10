@@ -12,7 +12,7 @@ pub struct TimeEntry {
     pub task_id: Option<Uuid>,
     pub start_time: OffsetDateTime,
     pub end_time: Option<OffsetDateTime>,
-    pub duration: Option<i32>, // Duration in seconds
+    pub duration: Option<i32>,
     pub created_at: Option<OffsetDateTime>,
     pub updated_at: Option<OffsetDateTime>,
 }
@@ -59,7 +59,7 @@ pub struct TimeEntryResponse {
 pub struct TimeEntriesListResponse {
     pub entries: Vec<TimeEntryResponse>,
     pub total_count: i64,
-    pub total_duration: i32, // Total duration in seconds for filtered results
+    pub total_duration: i32,
     pub page: i64,
     pub per_page: i64,
 }

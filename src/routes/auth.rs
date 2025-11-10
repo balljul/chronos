@@ -56,7 +56,6 @@ impl AuthAppState {
 }
 
 pub fn routes() -> Router<AuthAppState> {
-    // Routes that don't require authentication
     let public_routes = Router::new()
         .route("/register", post(register))
         .route("/login", post(login))

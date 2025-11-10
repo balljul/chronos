@@ -29,12 +29,10 @@ pub fn create_router(pool: PgPool) -> Router {
     let account_lockout_repository = AccountLockoutRepository::new(pool.clone());
     let refresh_token_repository = RefreshTokenRepository::new(pool);
 
-    // Create services
     let email_service = MockEmailService::new();
     let user_service = UserService::new(user_repository.clone());
     let auth_service = AuthService::new(user_repository, password_reset_repository, email_service);
 
-    // Initialize JWT service with refresh token repository
     let jwt_secret = get_jwt_secret();
     let jwt_service = JwtService::new(
         &jwt_secret,
@@ -42,15 +40,13 @@ pub fn create_router(pool: PgPool) -> Router {
         refresh_token_repository,
     );
 
-    // Create secure login service
     let secure_login_service = SecureLoginService::new(
-        auth_service.clone(), // Note: You might need to implement Clone for AuthService
-        jwt_service.clone(),  // Note: You might need to implement Clone for JwtService
+        auth_service.clone(),
+        jwt_service.clone(),
         login_attempt_repository,
         account_lockout_repository,
     );
 
-    // Create security state for rate limiting
     let security_state = SecurityState::new();
 
     let auth_state = auth::AuthAppState::new(
@@ -61,10 +57,8 @@ pub fn create_router(pool: PgPool) -> Router {
         security_state,
     );
 
-    // Create public auth routes (no middleware)
     let public_auth_routes = auth::routes().with_state(auth_state.clone());
 
-    // Create protected auth routes with middleware
     let protected_auth_routes =
         auth::protected_routes()
             .with_state(auth_state)
@@ -73,7 +67,6 @@ pub fn create_router(pool: PgPool) -> Router {
                 jwt_auth_middleware_with_json_errors,
             ));
 
-    // Create protected time entries routes with middleware
     let protected_time_entries_routes =
         time_entries::routes()
             .with_state(time_entries_state)

@@ -21,12 +21,10 @@ impl TimeEntryService {
         user_id: Uuid,
         request: CreateTimeEntryRequest,
     ) -> Result<TimeEntry, TimeEntryError> {
-        // Validate the request
         if let Err(validation_errors) = request.validate() {
             return Err(TimeEntryError::ValidationError(validation_errors.to_string()));
         }
 
-        // Validate time range if both start and end times are provided
         if let Some(end_time) = request.end_time {
             if end_time <= request.start_time {
                 return Err(TimeEntryError::InvalidTimeRange);
@@ -41,7 +39,7 @@ impl TimeEntryService {
             task_id: request.task_id,
             start_time: request.start_time,
             end_time: request.end_time,
-            duration: None, // Will be calculated by database trigger
+            duration: None,
             created_at: Some(OffsetDateTime::now_utc()),
             updated_at: Some(OffsetDateTime::now_utc()),
         };
@@ -61,7 +59,7 @@ impl TimeEntryService {
             project_id,
             task_id,
             start_time: OffsetDateTime::now_utc(),
-            end_time: None, // Timer is running
+            end_time: None,
         };
 
         self.create_time_entry(user_id, request).await
@@ -77,19 +75,16 @@ impl TimeEntryService {
         user_id: Uuid,
         request: UpdateTimeEntryRequest,
     ) -> Result<TimeEntry, TimeEntryError> {
-        // Validate the request
         if let Err(validation_errors) = request.validate() {
             return Err(TimeEntryError::ValidationError(validation_errors.to_string()));
         }
 
-        // Get existing entry to check ownership
         let existing_entry = self.repository.find_by_id_any_user(id).await?;
         
         if existing_entry.user_id != user_id {
             return Err(TimeEntryError::Forbidden);
         }
 
-        // Build updated entry with provided values or keep existing ones
         let updated_entry = TimeEntry {
             id,
             user_id,
@@ -98,7 +93,7 @@ impl TimeEntryService {
             task_id: request.task_id.or(existing_entry.task_id),
             start_time: request.start_time.unwrap_or(existing_entry.start_time),
             end_time: request.end_time.or(existing_entry.end_time),
-            duration: None, // Will be recalculated by database trigger
+            duration: None,
             created_at: existing_entry.created_at,
             updated_at: Some(OffsetDateTime::now_utc()),
         };
@@ -107,7 +102,6 @@ impl TimeEntryService {
     }
 
     pub async fn delete_time_entry(&self, id: Uuid, user_id: Uuid) -> Result<(), TimeEntryError> {
-        // Check if entry exists and belongs to user
         let entry = self.repository.find_by_id_any_user(id).await?;
         
         if entry.user_id != user_id {
@@ -118,7 +112,6 @@ impl TimeEntryService {
     }
 
     pub async fn stop_timer(&self, id: Uuid, user_id: Uuid) -> Result<TimeEntry, TimeEntryError> {
-        // Check if entry exists and belongs to user
         let entry = self.repository.find_by_id_any_user(id).await?;
         
         if entry.user_id != user_id {
@@ -141,12 +134,10 @@ impl TimeEntryService {
         user_id: Uuid,
         filters: TimeEntryFilters,
     ) -> Result<(Vec<TimeEntry>, i64, i32), TimeEntryError> {
-        // Validate the filters
         if let Err(validation_errors) = filters.validate() {
             return Err(TimeEntryError::ValidationError(validation_errors.to_string()));
         }
 
-        // Validate date range if both dates are provided
         if let (Some(start_date_str), Some(end_date_str)) = (&filters.start_date, &filters.end_date) {
             match (OffsetDateTime::parse(start_date_str, &time::format_description::well_known::Iso8601::DEFAULT), 
                    OffsetDateTime::parse(end_date_str, &time::format_description::well_known::Iso8601::DEFAULT)) {
