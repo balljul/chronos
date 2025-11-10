@@ -146,7 +146,9 @@ pub struct ProfileResponse {
     pub id: uuid::Uuid,
     pub name: Option<String>,
     pub email: String,
+    #[serde(default, with = "time::serde::rfc3339::option")]
     pub created_at: Option<time::OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
     pub updated_at: Option<time::OffsetDateTime>,
 }
 

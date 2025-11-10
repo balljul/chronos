@@ -11,8 +11,10 @@ pub struct PasswordResetToken {
     pub id: Uuid,
     pub user_id: Uuid,
     pub token_hash: String,
+    #[serde(with = "time::serde::rfc3339")]
     pub expires_at: OffsetDateTime,
     pub used: bool,
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
 }
 

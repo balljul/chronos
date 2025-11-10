@@ -11,6 +11,7 @@ pub struct LoginAttempt {
     pub success: bool,
     pub failure_reason: Option<String>,
     pub user_agent: Option<String>,
+    #[serde(with = "time::serde::rfc3339")]
     pub created_at: OffsetDateTime,
 }
 

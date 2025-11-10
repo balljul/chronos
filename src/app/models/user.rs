@@ -14,7 +14,9 @@ pub struct User {
     #[validate(email(message = "Invalid email format"))]
     pub email: String,
     pub password_hash: String,
+    #[serde(default, with = "time::serde::rfc3339::option")]
     pub created_at: Option<time::OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
     pub updated_at: Option<time::OffsetDateTime>,
 }
 
@@ -23,6 +25,7 @@ pub struct UserResponse {
     pub id: Uuid,
     pub name: Option<String>,
     pub email: String,
+    #[serde(default, with = "time::serde::rfc3339::option")]
     pub created_at: Option<time::OffsetDateTime>,
 }
 

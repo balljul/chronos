@@ -10,10 +10,14 @@ pub struct TimeEntry {
     pub description: Option<String>,
     pub project_id: Option<Uuid>,
     pub task_id: Option<Uuid>,
+    #[serde(with = "time::serde::rfc3339")]
     pub start_time: OffsetDateTime,
+    #[serde(default, with = "time::serde::rfc3339::option")]
     pub end_time: Option<OffsetDateTime>,
     pub duration: Option<i32>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
     pub created_at: Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
     pub updated_at: Option<OffsetDateTime>,
 }
 
@@ -47,11 +51,15 @@ pub struct TimeEntryResponse {
     pub description: Option<String>,
     pub project_id: Option<Uuid>,
     pub task_id: Option<Uuid>,
+    #[serde(with = "time::serde::rfc3339")]
     pub start_time: OffsetDateTime,
+    #[serde(default, with = "time::serde::rfc3339::option")]
     pub end_time: Option<OffsetDateTime>,
     pub duration: Option<i32>,
     pub is_running: bool,
+    #[serde(default, with = "time::serde::rfc3339::option")]
     pub created_at: Option<OffsetDateTime>,
+    #[serde(default, with = "time::serde::rfc3339::option")]
     pub updated_at: Option<OffsetDateTime>,
 }
 
