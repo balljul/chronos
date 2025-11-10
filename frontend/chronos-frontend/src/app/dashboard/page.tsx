@@ -31,6 +31,7 @@ export default function Dashboard() {
   const [description, setDescription] = useState("");
   const [currentEntry, setCurrentEntry] = useState<TimeEntry | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const descriptionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
   const getAuthToken = useCallback(() => {
     if (typeof window === "undefined") {
@@ -183,6 +184,34 @@ export default function Dashboard() {
     }
   };
 
+  const updateDescription = async (newDescription: string) => {
+    if (!currentEntry || !isRunning) return;
+    
+    try {
+      await timeEntriesAPI.updateTimeEntry(currentEntry.id, {
+        description: newDescription.trim() || undefined,
+      });
+      
+      setCurrentEntry(prev => prev ? { ...prev, description: newDescription } : null);
+    } catch (error) {
+      console.error("Failed to update description:", error);
+      toast.error("Failed to update description");
+    }
+  };
+
+  const handleDescriptionChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const newValue = e.target.value;
+    setDescription(newValue);
+    
+    if (isRunning && currentEntry) {
+      // Debounce the API call
+      clearTimeout(descriptionTimeoutRef.current);
+      descriptionTimeoutRef.current = setTimeout(() => {
+        updateDescription(newValue);
+      }, 1000);
+    }
+  };
+
   useEffect(() => {
     const loadDashboardData = async () => {
       setAuthLoading(true);
@@ -198,6 +227,9 @@ export default function Dashboard() {
     return () => {
       if (intervalRef.current) {
         clearInterval(intervalRef.current);
+      }
+      if (descriptionTimeoutRef.current) {
+        clearTimeout(descriptionTimeoutRef.current);
       }
     };
   }, []);
@@ -234,13 +266,45 @@ export default function Dashboard() {
 
   return (
     <div className="min-h-screen bg-white dark:bg-gray-900 flex flex-col">
-      {/* Header */}
+      {/* Header with Timer */}
       <header className="bg-white dark:bg-gray-900 border-b border-gray-200 dark:border-gray-800">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
           <div className="flex justify-between items-center py-4">
             <h1 className="text-xl font-semibold text-gray-900 dark:text-white">
               Chronos
             </h1>
+            
+            {/* Timer in Navbar */}
+            <div className="flex items-center space-x-4">
+              <Input
+                placeholder="What are you working on?"
+                value={description}
+                onChange={handleDescriptionChange}
+                className="w-48 text-sm"
+                maxLength={1000}
+              />
+              <div className="font-mono text-lg font-semibold text-gray-900 dark:text-white">
+                {formatTimerDuration(elapsedTime)}
+              </div>
+              {isRunning ? (
+                <Button
+                  onClick={handleStop}
+                  variant="destructive"
+                  size="sm"
+                >
+                  <Square className="h-4 w-4" />
+                </Button>
+              ) : (
+                <Button
+                  onClick={handleStart}
+                  size="sm"
+                  className="bg-green-600 hover:bg-green-700"
+                >
+                  <Play className="h-4 w-4" />
+                </Button>
+              )}
+            </div>
+            
             <div className="flex items-center space-x-3">
               <button
                 type="button"
@@ -261,98 +325,10 @@ export default function Dashboard() {
         </div>
       </header>
 
-      {/* Timer */}
+      {/* Main Content */}
       <main className="flex-1 flex items-center justify-center px-4 sm:px-6 lg:px-8">
-        <div className="w-full max-w-md mx-auto border border-gray-200 dark:border-gray-800 rounded-lg p-8 bg-gray-50/50 dark:bg-gray-900/50">
-          {/* Status Badge */}
-          {isRunning && (
-            <div className="flex justify-center mb-6">
-              <Badge
-                variant="secondary"
-                className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200 px-3 py-1"
-              >
-                <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse mr-2" />
-                Running
-              </Badge>
-            </div>
-          )}
-
-          {/* Timer Display */}
-          <div className="text-center space-y-2 mb-8">
-            <div className="text-6xl font-mono font-bold text-gray-900 dark:text-gray-100">
-              {formatTimerDuration(elapsedTime)}
-            </div>
-            {isRunning && currentEntry && (
-              <div className="text-sm text-muted-foreground">
-                Started at {new Date(currentEntry.start_time).toLocaleTimeString()}
-              </div>
-            )}
-          </div>
-
-          {/* Description Input */}
-          <div className="space-y-2 mb-6">
-            <Input
-              placeholder={
-                isRunning ? "What are you working on?" : "What will you work on?"
-              }
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-              className="text-center border-gray-300 dark:border-gray-700"
-              maxLength={1000}
-            />
-          </div>
-
-          {/* Control Button */}
-          <div className="flex justify-center mb-6">
-            {isRunning ? (
-              <Button
-                onClick={handleStop}
-                variant="destructive"
-                className="px-8"
-              >
-                <Square className="mr-2 h-4 w-4" />
-                Stop
-              </Button>
-            ) : (
-              <Button
-                onClick={handleStart}
-                className="px-8 bg-green-600 hover:bg-green-700"
-              >
-                <Play className="mr-2 h-4 w-4" />
-                Start
-              </Button>
-            )}
-          </div>
-
-          {/* Quick Actions */}
-          {!isRunning && (
-            <div className="flex gap-2 justify-center">
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setDescription("Meeting")}
-                className="border-gray-300 dark:border-gray-700"
-              >
-                Meeting
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setDescription("Development")}
-                className="border-gray-300 dark:border-gray-700"
-              >
-                Development
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setDescription("Break")}
-                className="border-gray-300 dark:border-gray-700"
-              >
-                Break
-              </Button>
-            </div>
-          )}
+        <div className="text-center text-gray-600 dark:text-gray-400">
+          <p>Dashboard content goes here</p>
         </div>
       </main>
     </div>
