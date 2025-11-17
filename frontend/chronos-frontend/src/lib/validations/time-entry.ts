@@ -1,6 +1,5 @@
 import * as z from "zod";
 
-// Time Entry Creation Schema
 export const createTimeEntrySchema = z
   .object({
     description: z
@@ -34,7 +33,6 @@ export const createTimeEntrySchema = z
   )
   .refine(
     (data) => {
-      // Ensure start time is not in the future
       return data.start_time <= new Date();
     },
     {
@@ -43,7 +41,6 @@ export const createTimeEntrySchema = z
     },
   );
 
-// Time Entry Update Schema (all fields optional)
 export const updateTimeEntrySchema = z
   .object({
     description: z
@@ -77,7 +74,6 @@ export const updateTimeEntrySchema = z
     },
   );
 
-// Timer Start Schema
 export const startTimerSchema = z.object({
   description: z
     .string()
@@ -88,7 +84,6 @@ export const startTimerSchema = z.object({
   task_id: z.string().uuid().optional().or(z.literal("")),
 });
 
-// Time Entry Filters Schema
 export const timeEntryFiltersSchema = z.object({
   start_date: z.string().datetime().optional().or(z.literal("")),
   end_date: z.string().datetime().optional().or(z.literal("")),
@@ -110,7 +105,6 @@ export const timeEntryFiltersSchema = z.object({
   sort_by: z.enum(["start_time", "duration"]).optional(),
 });
 
-// Form data schemas for React Hook Form
 export const timeEntryFormSchema = z
   .object({
     description: z.string().max(1000).optional(),
@@ -138,7 +132,6 @@ export const timerFormSchema = z.object({
   task_id: z.string().optional(),
 });
 
-// Type inference
 export type CreateTimeEntryFormData = z.infer<typeof createTimeEntrySchema>;
 export type UpdateTimeEntryFormData = z.infer<typeof updateTimeEntrySchema>;
 export type StartTimerFormData = z.infer<typeof startTimerSchema>;
