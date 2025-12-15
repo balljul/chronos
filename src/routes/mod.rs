@@ -15,12 +15,16 @@ use axum::{Router, middleware};
 use sqlx::PgPool;
 
 pub mod auth;
+pub mod projects;
+pub mod tasks;
 pub mod time_entries;
 pub mod users;
 
 pub fn create_router(pool: PgPool) -> Router {
     let users_state = users::AppState::new(pool.clone());
     let time_entries_state = time_entries::TimeEntriesState::new(pool.clone());
+    let projects_state = projects::ProjectsState::new(pool.clone());
+    let tasks_state = tasks::TasksState::new(pool.clone());
 
     let user_repository = UserRepository::new(pool.clone());
     let password_reset_repository = PasswordResetRepository::new(pool.clone());
@@ -71,6 +75,22 @@ pub fn create_router(pool: PgPool) -> Router {
         time_entries::routes()
             .with_state(time_entries_state)
             .layer(middleware::from_fn_with_state(
+                std::sync::Arc::new(jwt_service.clone()),
+                jwt_auth_middleware_with_json_errors,
+            ));
+
+    let protected_projects_routes =
+        projects::routes()
+            .with_state(projects_state)
+            .layer(middleware::from_fn_with_state(
+                std::sync::Arc::new(jwt_service.clone()),
+                jwt_auth_middleware_with_json_errors,
+            ));
+
+    let protected_tasks_routes =
+        tasks::routes()
+            .with_state(tasks_state)
+            .layer(middleware::from_fn_with_state(
                 std::sync::Arc::new(jwt_service),
                 jwt_auth_middleware_with_json_errors,
             ));
@@ -80,4 +100,6 @@ pub fn create_router(pool: PgPool) -> Router {
         .nest("/api/auth", public_auth_routes)
         .nest("/api/auth", protected_auth_routes)
         .nest("/api/time-entries", protected_time_entries_routes)
+        .nest("/api/projects", protected_projects_routes)
+        .nest("/api/tasks", protected_tasks_routes)
 }
