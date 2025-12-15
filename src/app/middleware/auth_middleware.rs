@@ -1,4 +1,4 @@
-use crate::app::models::jwt::{AuthContext, JwtError};
+use crate::app::models::jwt::{AuthContext, Claims, JwtError};
 use crate::app::services::jwt_service::JwtService;
 use axum::{
     extract::{Request, State},
