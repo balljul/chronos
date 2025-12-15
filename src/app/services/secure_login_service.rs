@@ -37,7 +37,6 @@ impl SecureLoginService {
         ip_address: String,
         user_agent: Option<String>,
     ) -> Result<LoginResponse, AuthError> {
-        // Step 1: Check IP rate limiting (5 attempts per 15 minutes)
         let rate_limit_window = OffsetDateTime::now_utc() - time::Duration::minutes(15);
         let ip_failures = self
             .login_attempt_repository
@@ -62,11 +61,9 @@ impl SecureLoginService {
             ));
         }
 
-        // Step 2: Find user by email
         let user = match self.auth_service.find_user_by_email(&request.email).await {
             Ok(Some(user)) => user,
             Ok(None) => {
-                // Log failed attempt for non-existent user
                 let attempt = LoginAttempt::new_failure(
                     ip_address,
                     request.email,
@@ -114,7 +111,6 @@ impl SecureLoginService {
             }
         }
 
-        // Step 4: Verify password using constant-time comparison
         let password_valid = match user.verify_password(&request.password) {
             Ok(valid) => valid,
             Err(_) => {
@@ -134,7 +130,6 @@ impl SecureLoginService {
         };
 
         if !password_valid {
-            // Step 5: Handle failed login attempt
             let attempt = LoginAttempt::new_failure(
                 ip_address.clone(),
                 request.email.clone(),
@@ -172,7 +167,6 @@ impl SecureLoginService {
             return Err(AuthError::new("Invalid email or password"));
         }
 
-        // Step 6: Successful login - generate tokens
         let token_pair = match self.jwt_service.generate_token_pair(&user).await {
             Ok(tokens) => tokens,
             Err(_) => {
@@ -191,7 +185,6 @@ impl SecureLoginService {
             }
         };
 
-        // Step 7: Log successful login attempt
         let success_attempt =
             LoginAttempt::new_success(ip_address, request.email, user.id, user_agent);
 
@@ -203,7 +196,6 @@ impl SecureLoginService {
             eprintln!("Failed to log successful login attempt: {}", e);
         }
 
-        // Step 8: Unlock account if it was locked (successful login resets lockout)
         if let Err(e) = self
             .account_lockout_repository
             .unlock_account(user.id)

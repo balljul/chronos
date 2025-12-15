@@ -245,16 +245,13 @@ async fn login(
     headers: HeaderMap,
     Json(request): Json<LoginRequest>,
 ) -> Result<(StatusCode, Json<LoginResponse>), (StatusCode, Json<AuthError>)> {
-    // Extract IP address
     let ip_address = addr.ip().to_string();
 
-    // Extract User-Agent
     let user_agent = headers
         .get("user-agent")
         .and_then(|header| header.to_str().ok())
         .map(|s| s.to_string());
 
-    // Use secure login service with enhanced security features
     match state
         .secure_login_service
         .secure_login(request, ip_address, user_agent)

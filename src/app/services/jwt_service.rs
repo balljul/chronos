@@ -33,7 +33,6 @@ impl JwtService {
         }
     }
 
-    // Generate a pair of access and refresh tokens
     pub async fn generate_token_pair(&self, user: &User) -> Result<TokenPair, JwtError> {
         let now = OffsetDateTime::now_utc();
 

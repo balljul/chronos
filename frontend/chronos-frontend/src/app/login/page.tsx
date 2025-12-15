@@ -52,13 +52,11 @@ function LoginForm() {
   });
 
   useEffect(() => {
-    // Check for success message from registration
     const message = searchParams.get("message");
     if (message) {
       setSuccessMessage(message);
     }
 
-    // Check if user is already authenticated
     if (typeof window !== "undefined") {
       const token = localStorage.getItem("access_token");
       if (token) {
@@ -87,7 +85,6 @@ function LoginForm() {
 
       const data = await response.json();
 
-      // Store tokens in localStorage - tokens are nested in the response
       if (typeof window !== "undefined") {
         if (data.tokens?.access_token) {
           localStorage.setItem("access_token", data.tokens.access_token);
@@ -97,7 +94,6 @@ function LoginForm() {
         }
       }
 
-      // Redirect to dashboard
       router.push("/dashboard");
     } catch (err) {
       setError(
