@@ -2,13 +2,16 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useState, useRef } from "react";
-import { Play, Square } from "lucide-react";
+import { Play, Square, FolderOpen, CheckSquare } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { formatTimerDuration } from "@/lib/time-utils";
 import { toast } from "sonner";
 import { timeEntriesAPI } from "@/lib/api/time-entries";
+import { projectsAPI, type Project } from "@/lib/api/projects";
+import { tasksAPI, type Task } from "@/lib/api/tasks";
 import TimeEntriesTable from "@/components/time-entries-table";
 import type { TimeEntry } from "@/types/time-entries";
 
@@ -30,9 +33,16 @@ export default function Dashboard() {
   const [isRunning, setIsRunning] = useState(false);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [description, setDescription] = useState("");
+  const [selectedProjectId, setSelectedProjectId] = useState<string | undefined>(undefined);
+  const [selectedTaskId, setSelectedTaskId] = useState<string | undefined>(undefined);
   const [currentEntry, setCurrentEntry] = useState<TimeEntry | null>(null);
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const descriptionTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Projects and tasks state
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [filteredTasks, setFilteredTasks] = useState<Task[]>([]);
 
   const getAuthToken = useCallback(() => {
     if (typeof window === "undefined") {
@@ -105,6 +115,35 @@ export default function Dashboard() {
     }
   }, [router, getAuthToken]);
 
+  const loadProjects = useCallback(async () => {
+    try {
+      const data = await projectsAPI.getProjects({ include_inactive: false });
+      setProjects(data);
+    } catch (err) {
+      console.error("Failed to load projects:", err);
+    }
+  }, []);
+
+  const loadTasks = useCallback(async () => {
+    try {
+      const data = await tasksAPI.getTasks({ include_inactive: false });
+      setTasks(data);
+      setFilteredTasks(data);
+    } catch (err) {
+      console.error("Failed to load tasks:", err);
+    }
+  }, []);
+
+  const filterTasksByProject = useCallback((projectId: string | undefined) => {
+    if (!projectId) {
+      setFilteredTasks(tasks);
+    } else {
+      const filtered = tasks.filter(task => task.project_id === projectId);
+      setFilteredTasks(filtered);
+    }
+    setSelectedTaskId(undefined);
+  }, [tasks]);
+
   // Timer functions
   const calculateElapsedTime = (startTime: string): number => {
     const start = new Date(startTime);
@@ -136,6 +175,8 @@ export default function Dashboard() {
         setCurrentEntry(entry);
         setIsRunning(true);
         setDescription(entry.description || "");
+        setSelectedProjectId(entry.project_id || undefined);
+        setSelectedTaskId(entry.task_id || undefined);
         const elapsed = calculateElapsedTime(entry.start_time);
         setElapsedTime(elapsed);
         startTimer(entry);
@@ -143,6 +184,8 @@ export default function Dashboard() {
         setCurrentEntry(null);
         setIsRunning(false);
         setElapsedTime(0);
+        setSelectedProjectId(undefined);
+        setSelectedTaskId(undefined);
       }
     } catch (error) {
       console.error("Failed to load current timer:", error);
@@ -153,8 +196,10 @@ export default function Dashboard() {
     try {
       const newEntry = await timeEntriesAPI.startTimer({
         description: description.trim() || undefined,
+        project_id: selectedProjectId,
+        task_id: selectedTaskId,
       });
-      
+
       setCurrentEntry(newEntry);
       setIsRunning(true);
       setElapsedTime(0);
@@ -168,15 +213,17 @@ export default function Dashboard() {
 
   const handleStop = async () => {
     if (!currentEntry) return;
-    
+
     try {
       stopTimer();
       await timeEntriesAPI.stopTimer(currentEntry.id);
-      
+
       setIsRunning(false);
       setCurrentEntry(null);
       setElapsedTime(0);
       setDescription("");
+      setSelectedProjectId(undefined);
+      setSelectedTaskId(undefined);
       toast.success("Timer stopped");
     } catch (error) {
       toast.error("Failed to stop timer");
@@ -203,7 +250,7 @@ export default function Dashboard() {
   const handleDescriptionChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const newValue = e.target.value;
     setDescription(newValue);
-    
+
     if (isRunning && currentEntry) {
       // Debounce the API call
       if (descriptionTimeoutRef.current) {
@@ -215,15 +262,49 @@ export default function Dashboard() {
     }
   };
 
+  const handleProjectChange = (projectId: string | undefined) => {
+    setSelectedProjectId(projectId);
+    filterTasksByProject(projectId);
+
+    if (isRunning && currentEntry) {
+      updateEntryDetails({ project_id: projectId });
+    }
+  };
+
+  const handleTaskChange = (taskId: string | undefined) => {
+    setSelectedTaskId(taskId);
+
+    if (isRunning && currentEntry) {
+      updateEntryDetails({ task_id: taskId });
+    }
+  };
+
+  const updateEntryDetails = async (updates: { project_id?: string; task_id?: string }) => {
+    if (!currentEntry || !isRunning) return;
+
+    try {
+      await timeEntriesAPI.updateTimeEntry(currentEntry.id, updates);
+      setCurrentEntry(prev => prev ? { ...prev, ...updates } : null);
+    } catch (error) {
+      console.error("Failed to update entry details:", error);
+      toast.error("Failed to update timer details");
+    }
+  };
+
   useEffect(() => {
     const loadDashboardData = async () => {
       setAuthLoading(true);
       await fetchProfile();
+      await Promise.all([loadProjects(), loadTasks()]);
       setAuthLoading(false);
     };
 
     loadDashboardData();
-  }, [fetchProfile]);
+  }, [fetchProfile, loadProjects, loadTasks]);
+
+  useEffect(() => {
+    filterTasksByProject(selectedProjectId);
+  }, [selectedProjectId, filterTasksByProject]);
 
   useEffect(() => {
     loadCurrentTimer();
@@ -278,7 +359,69 @@ export default function Dashboard() {
             </h1>
             
             {/* Timer in Navbar */}
-            <div className="flex items-center space-x-4">
+            <div className="flex items-center space-x-3">
+              <Select
+                value={selectedProjectId || "no-project"}
+                onValueChange={(value) => handleProjectChange(value === "no-project" ? undefined : value)}
+                disabled={isRunning}
+              >
+                <SelectTrigger className="w-40 text-sm">
+                  <SelectValue placeholder="Project">
+                    {selectedProjectId ?
+                      <div className="flex items-center space-x-2">
+                        {projects.find(p => p.id === selectedProjectId)?.color && (
+                          <div
+                            className="w-2 h-2 rounded-full"
+                            style={{ backgroundColor: projects.find(p => p.id === selectedProjectId)?.color }}
+                          />
+                        )}
+                        <span>{projects.find(p => p.id === selectedProjectId)?.name}</span>
+                      </div>
+                      : "Project"
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="no-project">No Project</SelectItem>
+                  {projects.map((project) => (
+                    <SelectItem key={project.id} value={project.id}>
+                      <div className="flex items-center space-x-2">
+                        {project.color && (
+                          <div
+                            className="w-3 h-3 rounded-full"
+                            style={{ backgroundColor: project.color }}
+                          />
+                        )}
+                        <span>{project.name}</span>
+                      </div>
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
+              <Select
+                value={selectedTaskId || "no-task"}
+                onValueChange={(value) => handleTaskChange(value === "no-task" ? undefined : value)}
+                disabled={isRunning}
+              >
+                <SelectTrigger className="w-40 text-sm">
+                  <SelectValue placeholder="Task">
+                    {selectedTaskId ?
+                      filteredTasks.find(t => t.id === selectedTaskId)?.name || "Unknown Task"
+                      : "Task"
+                    }
+                  </SelectValue>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="no-task">No Task</SelectItem>
+                  {filteredTasks.map((task) => (
+                    <SelectItem key={task.id} value={task.id}>
+                      {task.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+
               <Input
                 placeholder="What are you working on?"
                 value={description}
@@ -286,9 +429,11 @@ export default function Dashboard() {
                 className="w-48 text-sm"
                 maxLength={1000}
               />
+
               <div className="font-mono text-lg font-semibold text-gray-900 dark:text-white">
                 {formatTimerDuration(elapsedTime)}
               </div>
+
               {isRunning ? (
                 <Button
                   onClick={handleStop}
@@ -309,6 +454,22 @@ export default function Dashboard() {
             </div>
             
             <div className="flex items-center space-x-3">
+              <button
+                type="button"
+                onClick={() => router.push("/projects")}
+                className="text-sm px-3 py-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors flex items-center space-x-1"
+              >
+                <FolderOpen className="h-4 w-4" />
+                <span>Projects</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => router.push("/tasks")}
+                className="text-sm px-3 py-1.5 text-gray-700 dark:text-gray-300 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md transition-colors flex items-center space-x-1"
+              >
+                <CheckSquare className="h-4 w-4" />
+                <span>Tasks</span>
+              </button>
               <button
                 type="button"
                 onClick={() => router.push("/profile")}
